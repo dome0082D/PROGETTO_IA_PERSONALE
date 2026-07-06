@@ -125,4 +125,4 @@ class _SchermataAgenteState extends State<SchermataAgente>
                 children: [
                   // L'equalizzatore compare e vibra quando l'IA elabora o risponde
                   if (_iaStaParlando)
-                    AnimatedBuilder
+                    ( AnimatedBuilder)
