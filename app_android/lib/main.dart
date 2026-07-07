@@ -12,7 +12,7 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Monitoraggio IA Personale',
+      title: 'IA Personale Totale',
       theme: ThemeData(brightness: Brightness.dark, useMaterial3: true),
       home: const MonitorPage(),
     );
@@ -38,29 +38,39 @@ class _MonitorPageState extends State<MonitorPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text("Monitoraggio IA Personale"), centerTitle: true),
+      appBar: AppBar(title: const Text("Sistema IA Totale Online")),
       body: Center(
         child: StreamBuilder(
           stream: channel.stream,
           builder: (context, snapshot) {
-            if (snapshot.hasError) {
-              return Text('Errore di connessione: ${snapshot.error}');
-            } else if (snapshot.hasData) {
-              // CORREZIONE: Mappatura corretta con il nuovo schema del backend
+            if (snapshot.hasData) {
               final Map<String, dynamic> dati = jsonDecode(snapshot.data);
               final monitoraggio = dati['monitoraggio'];
-              final statoSicurezza = dati['sicurezza'];
-              
+              final statoSicurezza = dati['sicurezza']; // NORMALE o ALTA_ATTENZIONE
+
               return Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Text("Sicurezza: $statoSicurezza", style: TextStyle(
-                    color: statoSicurezza == "NORMALE" ? Colors.green : Colors.red,
-                    fontSize: 20
-                  )),
+                  // --- LA RIGA VIVA (Equalizzatore/Respiro) ---
+                  Container(
+                    height: 10,
+                    width: (monitoraggio['cpu'] * 3).toDouble(),
+                    decoration: BoxDecoration(
+                      color: statoSicurezza == "NORMALE" ? Colors.blueAccent : Colors.redAccent,
+                      boxShadow: [BoxShadow(color: Colors.blue.withOpacity(0.5), blurRadius: 10)],
+                    ),
+                  ),
+                  const SizedBox(height: 40),
+                  
+                  Text("STATO: $statoSicurezza", 
+                    style: TextStyle(color: statoSicurezza == "NORMALE" ? Colors.green : Colors.red, fontSize: 22)),
+                  
                   const SizedBox(height: 20),
-                  Text("Utilizzo CPU: ${monitoraggio['cpu']}%", style: const TextStyle(fontSize: 32)),
-                  Text("Utilizzo RAM: ${monitoraggio['ram']}%", style: const TextStyle(fontSize: 28)),
+                  
+                  Text("${monitoraggio['cpu'].toStringAsFixed(1)}%", 
+                    style: const TextStyle(fontSize: 80, fontWeight: FontWeight.bold)),
+                  
+                  const Text("CARICO SISTEMA", style: TextStyle(color: Colors.grey)),
                 ],
               );
             }
