@@ -1,12 +1,12 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:tuo_nome_progetto/main.dart'; // Sostituisci 'tuo_nome_progetto' con il nome reale della tua cartella
+import '../lib/main.dart'; // Import relativo al file main.dart
 
 void main() {
-  testWidgets('Test avvio app', (WidgetTester tester) async {
-    // Carica l'app
+  testWidgets('Test avvio app IA Personale', (WidgetTester tester) async {
+    // Carica la nostra applicazione
     await tester.pumpWidget(const AppPersonale());
 
-    // Verifica che il testo sia presente
+    // Verifica che il testo che definisce l'interfaccia sia presente
     expect(find.text('Monitoraggio IA attivo'), findsOneWidget);
   });
 }
