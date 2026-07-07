@@ -1,0 +1,18 @@
+[
+    {
+        "tipo": "ANOMALIA_CPU",
+        "dettagli": "Uso al 100.0%"
+    },
+    {
+        "tipo": "ANOMALIA_CPU",
+        "dettagli": "Uso al 95.7%"
+    },
+    {
+        "tipo": "ANOMALIA_CPU",
+        "dettagli": "Uso al 100.0%"
+    },
+    {
+        "tipo": "ANOMALIA_CPU",
+        "dettagli": "Uso al 100.0%"
+    }
+]
