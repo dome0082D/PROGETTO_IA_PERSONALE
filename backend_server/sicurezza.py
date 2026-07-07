@@ -8,7 +8,7 @@ import sys
 # Importazione dei moduli che abbiamo creato
 import memoria
 import agente_proattivo
-import visione
+import visione_reale as visione
 import empatia
 import sogno
 import fabbrica
