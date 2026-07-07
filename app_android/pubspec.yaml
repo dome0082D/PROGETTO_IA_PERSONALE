@@ -13,6 +13,8 @@ dependencies:
     sdk: flutter
   # Libreria fondamentale per la comunicazione WebSocket con il server Python
   web_socket_channel: ^3.0.1
+  # Libreria per la sintesi vocale (Text-to-Speech)
+  flutter_tts: ^4.0.2
   # Utilizzato per la conversione JSON dei dati ricevuti
   cupertino_icons: ^1.0.6
 
