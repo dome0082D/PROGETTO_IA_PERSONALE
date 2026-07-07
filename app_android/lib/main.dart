@@ -28,7 +28,12 @@ class _MonitorPageState extends State<MonitorPage> {
   @override
   void initState() {
     super.initState();
+    // Connessione al server locale (Python)
     channel = WebSocketChannel.connect(Uri.parse('ws://127.0.0.1:8080'));
+  }
+
+  void inviaComando(String azione) {
+    channel.sink.add(json.encode({"azione": azione}));
   }
 
   @override
@@ -37,32 +42,40 @@ class _MonitorPageState extends State<MonitorPage> {
       body: StreamBuilder(
         stream: channel.stream,
         builder: (context, snapshot) {
+          if (snapshot.hasError) return Center(child: Text("Errore: ${snapshot.error}"));
           if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
           
           final Map<String, dynamic> dati = jsonDecode(snapshot.data);
-          final mon = dati['monitoraggio'];
           
+          // Gestione sicura dei dati
+          final mon = dati['monitoraggio'] ?? {'cpu': 0.0};
+          final domanda = dati['domanda'] ?? "";
+
           return Center(
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                // La "Riga Viva" che pulsa in base alla CPU
-                Container(
-                  height: 15,
-                  width: (mon['cpu'] * 4).toDouble(),
-                  decoration: BoxDecoration(
-                    color: dati['sicurezza'] == "NORMALE" ? Colors.blue : Colors.red,
-                    borderRadius: BorderRadius.circular(10)
-                  ),
-                ),
-                const SizedBox(height: 40),
                 Text("SICUREZZA: ${dati['sicurezza']}", style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
-                const SizedBox(height: 10),
-                // Ecco i nuovi dati dai moduli
-                Text("VISIONE: ${dati['visione']}", style: const TextStyle(fontSize: 18, color: Colors.grey)),
+                const SizedBox(height: 20),
+                Text("${mon['cpu'].toStringAsFixed(1)}% CPU", style: const TextStyle(fontSize: 40)),
                 const SizedBox(height: 30),
-                Text("${mon['cpu'].toStringAsFixed(1)}%", style: const TextStyle(fontSize: 60, fontWeight: FontWeight.bold)),
-                const Text("CARICO CPU", style: TextStyle(color: Colors.grey)),
+                
+                // Se c'è una domanda, mostriamo i pulsanti
+                if (domanda != "Sistema ok." && domanda != "")
+                  Column(
+                    children: [
+                      Text(domanda, style: const TextStyle(color: Colors.yellow, fontSize: 18)),
+                      const SizedBox(height: 10),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          ElevatedButton(onPressed: () => inviaComando("pulisci"), child: const Text("SI")),
+                          const SizedBox(width: 20),
+                          ElevatedButton(onPressed: () => print("Annullato"), child: const Text("NO")),
+                        ],
+                      ),
+                    ],
+                  ),
               ],
             ),
           );
