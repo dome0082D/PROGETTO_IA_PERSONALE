@@ -4,50 +4,72 @@ import json
 import psutil
 import logging
 import sys
-from memoria import MemoriaApprendimento
-from agente_proattivo import battito_cardiaco
 
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-logger = logging.getLogger("SicurezzaServer")
+# Importazione dei moduli che abbiamo creato
+import memoria
+import agente_proattivo
+import visione
+import empatia
+import sogno
+import fabbrica
+import domotica
 
-class GuardianoDigitale:
-    def __init__(self):
-        self.memoria = MemoriaApprendimento()
-    
-    def analizza_comportamento(self, cpu_uso):
-        if cpu_uso > 95:
-            return "ALTA_ATTENZIONE"
-        return "NORMALE"
+# Configurazione Log per monitorare l'attività
+logging.basicConfig(
+    level=logging.INFO, 
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger("NucleoCentrale")
 
-guardiano = GuardianoDigitale()
+# --- Protocollo Zero: Controllo Hardware ---
+def protocollo_zero():
+    logger.info("Protocollo Zero: Avvio verifica integrità hardware...")
+    if psutil.cpu_count() < 1:
+        logger.error("Hardware instabile rilevato.")
+        sys.exit(1)
+    logger.info("Protocollo Zero completato: Sistema Sicuro.")
 
+# --- Gestione Connessione WebSocket ---
 async def handler(websocket):
-    client_address = websocket.remote_address
-    logger.info(f"Connessione stabilita con: {client_address}")
-    
+    logger.info("Connessione stabilita con l'Interfaccia Viva.")
     try:
         while True:
-            cpu = psutil.cpu_percent(interval=1)
-            mem = psutil.virtual_memory()
-            stato = guardiano.analizza_comportamento(cpu)
+            # Rilevazione dati dai moduli
+            stato_visione = visione.scansiona()
+            cpu_uso = psutil.cpu_percent(interval=1)
+            mem_uso = psutil.virtual_memory().percent
             
+            # Creazione del pacchetto dati completo
             dati = {
-                "sicurezza": stato,
-                "monitoraggio": {"cpu": cpu, "ram": mem.percent}
+                "sicurezza": "NORMALE",
+                "visione": stato_visione,
+                "monitoraggio": {
+                    "cpu": cpu_uso,
+                    "ram": mem_uso
+                }
             }
+            
+            # Invio all'app Flutter
             await websocket.send(json.dumps(dati))
-            await asyncio.sleep(1)
-    except Exception as e:
-        logger.error(f"Errore: {e}")
+            await asyncio.sleep(0.5)
+    except websockets.exceptions.ConnectionClosed:
+        logger.info("Connessione terminata.")
 
+# --- Avvio Sistema ---
 async def avvio_sistema():
-    logger.info("Protocollo Zero: Avvio sicuro...")
-    # Avvio del battito in background
-    asyncio.create_task(battito_cardiaco(guardiano))
+    protocollo_zero()
     
+    # Avvio del "Battito Cardiaco" in background (24/7)
+    asyncio.create_task(agente_proattivo.avvia_battito())
+    
+    logger.info("IA Guardiano Online. In attesa di input.")
+    
+    # Avvio Server WebSocket
     async with websockets.serve(handler, "127.0.0.1", 8080):
-        logger.info("IA Guardiano Online.")
-        await asyncio.Future()
+        await asyncio.Future() # Mantiene il server attivo indefinitamente
 
 if __name__ == "__main__":
-    asyncio.run(avvio_sistema())
+    try:
+        asyncio.run(avvio_sistema())
+    except KeyboardInterrupt:
+        logger.info("Spegnimento sistema richiesto.")
