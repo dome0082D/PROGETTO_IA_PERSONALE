@@ -3,35 +3,39 @@ import websockets
 import json
 import psutil
 
-# Questa funzione gestisce ogni singola connessione che arriva dal frontend
+# Funzione gestore: ogni volta che un client (Flutter) si connette, questa parte viene eseguita
 async def handler(websocket, path):
     print("Connessione stabilita con il frontend Flutter!")
     try:
         while True:
-            # Rileva l'uso della CPU del sistema
+            # Rilevamento dati hardware
             cpu_usage = psutil.cpu_percent(interval=1)
             
-            # Crea il messaggio JSON completo
-            messaggio = json.dumps({
+            # Creazione del pacchetto dati completo
+            dati = {
                 "stato": "attivo",
-                "cpu": f"{cpu_usage}%",
-                "messaggio": "Monitoraggio in tempo reale"
-            })
+                "cpu": cpu_usage,
+                "messaggio": "Monitoraggio sistema in tempo reale"
+            }
             
-            # Invia il messaggio al client collegato
-            await websocket.send(messaggio)
+            # Invio dei dati come stringa JSON
+            await websocket.send(json.dumps(dati))
             
-            # Attende un secondo prima del prossimo ciclo
+            # Pausa di 1 secondo come richiesto per il monitoraggio costante
             await asyncio.sleep(1)
+            
+    except websockets.exceptions.ConnectionClosed:
+        print("Il client Flutter si è disconnesso.")
     except Exception as e:
-        print(f"Connessione chiusa o errore durante l'invio: {e}")
+        print(f"Errore durante la comunicazione: {e}")
 
-# Avvia il server WebSocket sulla porta 8080 (fissa)
-print("Avvio del server WebSocket in corso...")
-print("Server in attesa di connessioni su ws://localhost:8080...")
-
+# Configurazione del server WebSocket
+# Utilizziamo 'localhost' e la porta 8080 per garantire la stabilità
+print("Avvio del server WebSocket...")
 start_server = websockets.serve(handler, "localhost", 8080)
 
-# Esecuzione del server in un loop infinito
+print("Server in ascolto su ws://localhost:8080. Non chiudere questa finestra.")
+
+# Avvio del loop degli eventi
 asyncio.get_event_loop().run_until_complete(start_server)
 asyncio.get_event_loop().run_forever()

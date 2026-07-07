@@ -10,8 +10,10 @@ class MyApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const MaterialApp(
-      home: MonitorPage(),
+    return MaterialApp(
+      title: 'Monitoraggio IA',
+      theme: ThemeData(primarySwatch: Colors.blue),
+      home: const MonitorPage(),
     );
   }
 }
@@ -24,39 +26,38 @@ class MonitorPage extends StatefulWidget {
 }
 
 class _MonitorPageState extends State<MonitorPage> {
-  // Connessione fissa alla porta 8080 aperta dal backend Python
-  final channel = WebSocketChannel.connect(
-    Uri.parse('ws://localhost:8080'),
-  );
+  // Connessione fissa al server Python sulla porta 8080
+  late WebSocketChannel channel;
+
+  @override
+  void initState() {
+    super.initState();
+    // Creazione del canale di comunicazione
+    channel = WebSocketChannel.connect(
+      Uri.parse('ws://localhost:8080'),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text("Monitoraggio Reale"),
+        title: const Text("Monitoraggio IA Personale"),
       ),
       body: Center(
         child: StreamBuilder(
           stream: channel.stream,
           builder: (context, snapshot) {
-            if (snapshot.hasData) {
+            // Gestione dei diversi stati della connessione
+            if (snapshot.hasError) {
+              return const Text('Errore: Impossibile connettersi al server.');
+            } else if (snapshot.hasData) {
               return Text(
-                'Dati Ricevuti: ${snapshot.data}',
-                style: const TextStyle(
-                  fontSize: 24, 
-                  fontWeight: FontWeight.bold
-                ),
-              );
-            } else if (snapshot.hasError) {
-              return const Text(
-                'Errore di connessione',
-                style: TextStyle(color: Colors.red),
+                'Dati dal server: ${snapshot.data}',
+                style: const TextStyle(fontSize: 20),
               );
             } else {
-              return const Text(
-                'In attesa del segnale...',
-                style: TextStyle(fontSize: 20),
-              );
+              return const Text('In attesa del segnale...', style: TextStyle(fontSize: 20));
             }
           },
         ),
@@ -66,7 +67,7 @@ class _MonitorPageState extends State<MonitorPage> {
 
   @override
   void dispose() {
-    // Chiude il canale quando l'app viene chiusa
+    // Chiusura pulita della connessione alla chiusura dell'app
     channel.sink.close();
     super.dispose();
   }
