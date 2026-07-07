@@ -22,5 +22,21 @@
     {
         "tipo": "ANOMALIA_CPU",
         "dettagli": "Uso al 100.0%"
+    },
+    {
+        "tipo": "ANOMALIA_CPU",
+        "dettagli": "Uso al 97.5%"
+    },
+    {
+        "tipo": "ANOMALIA_CPU",
+        "dettagli": "Uso al 100.0%"
+    },
+    {
+        "tipo": "ANOMALIA_CPU",
+        "dettagli": "Uso al 96.9%"
+    },
+    {
+        "tipo": "ANOMALIA_CPU",
+        "dettagli": "Uso al 100.0%"
     }
 ]
