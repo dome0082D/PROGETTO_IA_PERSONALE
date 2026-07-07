@@ -1,22 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 
-void main() {
-  runApp(const MyApp());
-}
-
-class MyApp extends StatelessWidget {
-  const MyApp({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'Monitoraggio IA',
-      theme: ThemeData(primarySwatch: Colors.blue),
-      home: const MonitorPage(),
-    );
-  }
-}
+void main() => runApp(const MaterialApp(home: MonitorPage()));
 
 class MonitorPage extends StatefulWidget {
   const MonitorPage({super.key});
@@ -26,39 +11,21 @@ class MonitorPage extends StatefulWidget {
 }
 
 class _MonitorPageState extends State<MonitorPage> {
-  // Connessione fissa al server Python sulla porta 8080
-  late WebSocketChannel channel;
-
-  @override
-  void initState() {
-    super.initState();
-    // Creazione del canale di comunicazione
-    channel = WebSocketChannel.connect(
-      Uri.parse('ws://localhost:8080'),
-    );
-  }
+  // Questa è la chiave: puntiamo alla 8080 fissa, NON al localhost di Chrome
+  final channel = WebSocketChannel.connect(Uri.parse('ws://127.0.0.1:8080'));
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text("Monitoraggio IA Personale"),
-      ),
+      appBar: AppBar(title: const Text("Monitoraggio Fisso")),
       body: Center(
         child: StreamBuilder(
           stream: channel.stream,
           builder: (context, snapshot) {
-            // Gestione dei diversi stati della connessione
-            if (snapshot.hasError) {
-              return const Text('Errore: Impossibile connettersi al server.');
-            } else if (snapshot.hasData) {
-              return Text(
-                'Dati dal server: ${snapshot.data}',
-                style: const TextStyle(fontSize: 20),
-              );
-            } else {
-              return const Text('In attesa del segnale...', style: TextStyle(fontSize: 20));
+            if (snapshot.hasData) {
+              return Text('Dati: ${snapshot.data}', style: const TextStyle(fontSize: 30));
             }
+            return const Text('In attesa della porta 8080...');
           },
         ),
       ),
@@ -67,7 +34,6 @@ class _MonitorPageState extends State<MonitorPage> {
 
   @override
   void dispose() {
-    // Chiusura pulita della connessione alla chiusura dell'app
     channel.sink.close();
     super.dispose();
   }
