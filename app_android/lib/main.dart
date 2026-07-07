@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
-import 'package:flutter_tts/flutter_tts.dart'; // Import necessario
+import 'package:flutter_tts/flutter_tts.dart';
 import 'dart:convert';
 
 void main() => runApp(const MyApp());
@@ -25,25 +25,24 @@ class MonitorPage extends StatefulWidget {
 
 class _MonitorPageState extends State<MonitorPage> {
   late WebSocketChannel channel;
-  final FlutterTts flutterTts = FlutterTts(); // Inizializzazione motore vocale
-  String ultimaDomanda = ""; // Variabile per non ripetere la stessa frase
+  final FlutterTts flutterTts = FlutterTts();
+  final TextEditingController _inputController = TextEditingController();
+  String ultimaDomanda = "";
 
   @override
   void initState() {
     super.initState();
     channel = WebSocketChannel.connect(Uri.parse('ws://127.0.0.1:8080'));
-    initTts(); // Configurazione voce
+    initTts();
   }
 
   void initTts() async {
     await flutterTts.setLanguage("it-IT");
     await flutterTts.setSpeechRate(0.5);
-    await flutterTts.setVolume(1.0);
   }
 
-  void inviaComando(String azione) {
-    channel.sink.add(json.encode({"azione": azione}));
-    ultimaDomanda = ""; // Reset dopo risposta
+  void inviaComando(Map<String, dynamic> comando) {
+    channel.sink.add(json.encode(comando));
   }
 
   @override
@@ -52,37 +51,54 @@ class _MonitorPageState extends State<MonitorPage> {
       body: StreamBuilder(
         stream: channel.stream,
         builder: (context, snapshot) {
-          if (snapshot.hasError) return Center(child: Text("Errore: ${snapshot.error}"));
           if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
           
           final Map<String, dynamic> dati = jsonDecode(snapshot.data);
-          final mon = dati['monitoraggio'] ?? {'cpu': 0.0};
-          final String domanda = dati['domanda'] ?? "";
+          
+          // 1. Gestione Feedback Server (Risposte alle tue domande o ricerche)
+          if (dati.containsKey('feedback')) {
+            flutterTts.speak(dati['feedback']);
+          }
 
-          // Logica vocale: parla solo se la domanda è nuova
+          // 2. Gestione Domande Proattive
+          final domanda = dati['domanda'] ?? "";
           if (domanda != "Sistema ok." && domanda != ultimaDomanda) {
             ultimaDomanda = domanda;
             flutterTts.speak(domanda); 
           }
 
-          return Center(
+          return Padding(
+            padding: const EdgeInsets.all(20.0),
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Text("SICUREZZA: ${dati['sicurezza']}", style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
-                const SizedBox(height: 20),
-                Text("${mon['cpu'].toStringAsFixed(1)}% CPU", style: const TextStyle(fontSize: 40)),
-                const SizedBox(height: 30),
+                Text("SICUREZZA: ${dati['sicurezza']}", style: const TextStyle(fontSize: 24)),
+                Text("${dati['monitoraggio']['cpu'].toStringAsFixed(1)}% CPU", style: const TextStyle(fontSize: 50)),
                 
+                // Campo di Input per scrivere all'Agente
+                TextField(
+                  controller: _inputController,
+                  decoration: InputDecoration(
+                    hintText: "Scrivi un comando o una ricerca...",
+                    suffixIcon: IconButton(
+                      icon: const Icon(Icons.send),
+                      onPressed: () {
+                        inviaComando({"comando_testuale": _inputController.text});
+                        _inputController.clear();
+                      },
+                    ),
+                  ),
+                ),
+
                 if (domanda != "Sistema ok." && domanda != "")
                   Column(
                     children: [
-                      Text(domanda, style: const TextStyle(color: Colors.yellow, fontSize: 18)),
-                      const SizedBox(height: 10),
+                      const SizedBox(height: 20),
+                      Text(domanda, style: const TextStyle(color: Colors.yellow)),
                       Row(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          ElevatedButton(onPressed: () => inviaComando("pulisci"), child: const Text("SI")),
+                          ElevatedButton(onPressed: () => inviaComando({"azione": "pulisci"}), child: const Text("SI")),
                           const SizedBox(width: 20),
                           ElevatedButton(onPressed: () => setState(() => ultimaDomanda = ""), child: const Text("NO")),
                         ],
@@ -100,7 +116,8 @@ class _MonitorPageState extends State<MonitorPage> {
   @override
   void dispose() {
     channel.sink.close();
-    flutterTts.stop(); // Ferma la voce alla chiusura
+    flutterTts.stop();
+    _inputController.dispose();
     super.dispose();
   }
 }
