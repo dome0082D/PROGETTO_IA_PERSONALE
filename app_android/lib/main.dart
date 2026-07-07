@@ -56,10 +56,13 @@ class _MonitorPageState extends State<MonitorPage> {
                   ),
                 ),
                 const SizedBox(height: 40),
-                Text("STATO: ${dati['sicurezza']}", style: const TextStyle(fontSize: 24)),
+                Text("SICUREZZA: ${dati['sicurezza']}", style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
+                const SizedBox(height: 10),
+                // Ecco i nuovi dati dai moduli
                 Text("VISIONE: ${dati['visione']}", style: const TextStyle(fontSize: 18, color: Colors.grey)),
-                const SizedBox(height: 20),
+                const SizedBox(height: 30),
                 Text("${mon['cpu'].toStringAsFixed(1)}%", style: const TextStyle(fontSize: 60, fontWeight: FontWeight.bold)),
+                const Text("CARICO CPU", style: TextStyle(color: Colors.grey)),
               ],
             ),
           );
