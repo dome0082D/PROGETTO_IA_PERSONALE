@@ -24,18 +24,32 @@ class MonitoraggioWidget extends StatefulWidget {
 }
 
 class _MonitoraggioWidgetState extends State<MonitoraggioWidget> {
-  // L'app si mette in ascolto sulla porta 8080
-  final channel = WebSocketChannel.connect(Uri.parse('ws://localhost:8080/ws/windows'));
+  // Canale di connessione
+  final channel = WebSocketChannel.connect(
+    Uri.parse('ws://localhost:8000/ws/windows'),
+  );
+
+  @override
+  void dispose() {
+    channel.sink.close();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
     return StreamBuilder(
       stream: channel.stream,
       builder: (context, snapshot) {
-        return Text(
-          snapshot.hasData ? '${snapshot.data}' : 'Monitoraggio IA attivo...',
-          style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
-        );
+        if (snapshot.hasError) {
+          return const Text('Errore di connessione');
+        } else if (snapshot.hasData) {
+          return Text(
+            'Dati Ricevuti: ${snapshot.data}',
+            style: const TextStyle(fontSize: 20),
+          );
+        } else {
+          return const Text('Monitoraggio IA attivo...');
+        }
       },
     );
   }
