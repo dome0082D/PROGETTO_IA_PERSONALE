@@ -41,10 +41,6 @@ class _MonitorPageState extends State<MonitorPage> {
     await flutterTts.setSpeechRate(0.5);
   }
 
-  void inviaComando(Map<String, dynamic> comando) {
-    channel.sink.add(json.encode(comando));
-  }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -55,27 +51,26 @@ class _MonitorPageState extends State<MonitorPage> {
           
           final Map<String, dynamic> dati = jsonDecode(snapshot.data);
           
-          // 1. Gestione Feedback Server (Risposte alle tue domande o ricerche)
+          // 1. GESTIONE VOCALE (Feedback e Domande)
           if (dati.containsKey('feedback')) {
             flutterTts.speak(dati['feedback']);
           }
-
-          // 2. Gestione Domande Proattive
           final domanda = dati['domanda'] ?? "";
           if (domanda != "Sistema ok." && domanda != ultimaDomanda) {
             ultimaDomanda = domanda;
-            flutterTts.speak(domanda); 
+            flutterTts.speak(domanda);
           }
 
           return Padding(
-            padding: const EdgeInsets.all(20.0),
+            padding: const EdgeInsets.all(20),
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 Text("SICUREZZA: ${dati['sicurezza']}", style: const TextStyle(fontSize: 24)),
                 Text("${dati['monitoraggio']['cpu'].toStringAsFixed(1)}% CPU", style: const TextStyle(fontSize: 50)),
                 
-                // Campo di Input per scrivere all'Agente
+                const SizedBox(height: 30),
+                // CAMPO DI INPUT (Scrittura comandi e ricerche)
                 TextField(
                   controller: _inputController,
                   decoration: InputDecoration(
@@ -83,13 +78,14 @@ class _MonitorPageState extends State<MonitorPage> {
                     suffixIcon: IconButton(
                       icon: const Icon(Icons.send),
                       onPressed: () {
-                        inviaComando({"comando_testuale": _inputController.text});
+                        channel.sink.add(json.encode({"comando_testuale": _inputController.text}));
                         _inputController.clear();
                       },
                     ),
                   ),
                 ),
-
+                
+                // PULSANTI (SI/NO per azioni proattive)
                 if (domanda != "Sistema ok." && domanda != "")
                   Column(
                     children: [
@@ -98,7 +94,7 @@ class _MonitorPageState extends State<MonitorPage> {
                       Row(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          ElevatedButton(onPressed: () => inviaComando({"azione": "pulisci"}), child: const Text("SI")),
+                          ElevatedButton(onPressed: () => channel.sink.add(json.encode({"azione": "pulisci"})), child: const Text("SI")),
                           const SizedBox(width: 20),
                           ElevatedButton(onPressed: () => setState(() => ultimaDomanda = ""), child: const Text("NO")),
                         ],
