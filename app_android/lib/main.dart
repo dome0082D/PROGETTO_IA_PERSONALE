@@ -106,3 +106,24 @@ class _MonitorPageState extends State<MonitorPage> {
                               _inputController.clear();
                             }
                           },
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  @override
+  void dispose() {
+    channel.sink.close();
+    _inputController.dispose();
+    flutterTts.stop();
+    super.dispose();
+  }
+}
