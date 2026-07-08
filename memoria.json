@@ -1,0 +1,20 @@
+import json
+import os
+
+def memorizza(nuova_info):
+    memoria_file = "memoria.json"
+    data = {}
+    if os.path.exists(memoria_file):
+        with open(memoria_file, "r") as f:
+            data = json.load(f)
+    
+    # Aggiunge l'informazione con un timestamp
+    import datetime
+    key = str(datetime.datetime.now())
+    data[key] = nuova_info
+    
+    with open(memoria_file, "w") as f:
+        json.dump(data, f, indent=4)
+
+# Nel tuo ricevitore di sicurezza.py, quando l'utente scrive:
+# memorizza(testo)
