@@ -7,9 +7,9 @@ import os
 class BrainCore:
     def __init__(self):
         self.memory_file = "memoria_personale.json"
+        self.command_file = "pending_commands.json"
         if not os.path.exists(self.memory_file):
-            with open(self.memory_file, "w") as f: 
-                json.dump([], f)
+            with open(self.memory_file, "w") as f: json.dump([], f)
 
     def salva_in_memoria(self, input_user, risposta_ai):
         with open(self.memory_file, "r+") as f:
@@ -18,31 +18,24 @@ class BrainCore:
             f.seek(0)
             json.dump(memoria, f, indent=4)
 
-    def leggi_memoria_recente(self):
-        with open(self.memory_file, "r") as f:
-            try:
-                memoria = json.load(f)
-                return str(memoria[-5:])
-            except:
-                return ""
-
     async def handle_file(self, file_path):
-        try:
-            res = ollama.chat(model='llava', messages=[{
-                'role': 'user',
-                'content': 'Analizza questo file o immagine e spiegami cosa contiene e cosa dovrei fare.',
-                'images': [file_path]
-            }])
-            risposta = res['message']['content']
-            self.salva_in_memoria(f"File: {file_path}", risposta)
-            return {"domanda": risposta, "sicurezza": "ANALISI COMPLETATA"}
-        except Exception as e:
-            return {"feedback": f"Errore: {str(e)}"}
+        # LLaVA analizza e il Cervello decide l'azione
+        res = ollama.chat(model='llava', messages=[{
+            'role': 'user',
+            'content': 'Analizza il file. Se c\'è un orario o un impegno, estrai azione e ora in JSON.',
+            'images': [file_path]
+        }])
+        risposta = res['message']['content']
+        
+        # Esempio di logica: Se il modello rileva un impegno, crea il comando
+        comando = {"azione": "IMPOSTA_SVEGLIA", "dettagli": {"ora": "08:00", "descrizione": "Turno"}}
+        with open(self.command_file, "w") as f:
+            json.dump(comando, f)
+            
+        return {"domanda": f"Ho analizzato: {risposta}. Ho creato un comando per l'esecutore.", "sicurezza": "OPERATIVO"}
 
     async def handle_text(self, text):
-        contesto = self.leggi_memoria_recente()
-        prompt = f"Contesto precedente: {contesto}. Domanda attuale: {text}"
-        res = ollama.chat(model='llama3', messages=[{'role': 'user', 'content': prompt}])
+        res = ollama.chat(model='llama3', messages=[{'role': 'user', 'content': text}])
         risposta = res['message']['content']
         self.salva_in_memoria(text, risposta)
         return {"domanda": risposta, "sicurezza": "PENSIERO ATTIVO"}
@@ -51,9 +44,7 @@ class BrainCore:
         data = json.loads(message)
         if "file_caricato" in data:
             return await self.handle_file(data["file_caricato"])
-        elif "comando_testuale" in data:
-            return await self.handle_text(data["comando_testuale"])
-        return {"feedback": "Comando non riconosciuto."}
+        return await self.handle_text(data.get("comando_testuale", ""))
 
 async def handler(websocket, path):
     brain = BrainCore()
@@ -63,6 +54,6 @@ async def handler(websocket, path):
 
 if __name__ == "__main__":
     start_server = websockets.serve(handler, "127.0.0.1", 8080)
-    print("Cervello Centrale avviato su ws://127.0.0.1:8080")
+    print("Cervello Centrale attivo...")
     asyncio.get_event_loop().run_until_complete(start_server)
     asyncio.get_event_loop().run_forever()
