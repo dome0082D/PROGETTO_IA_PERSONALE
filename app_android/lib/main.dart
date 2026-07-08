@@ -8,7 +8,6 @@ void main() => runApp(const MyApp());
 
 class MyApp extends StatelessWidget {
   const MyApp({super.key});
-
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
@@ -21,7 +20,6 @@ class MyApp extends StatelessWidget {
 
 class MonitorPage extends StatefulWidget {
   const MonitorPage({super.key});
-
   @override
   State<MonitorPage> createState() => _MonitorPageState();
 }
@@ -58,13 +56,11 @@ class _MonitorPageState extends State<MonitorPage> {
           try {
             dati = jsonDecode(snapshot.data);
           } catch (e) {
-            return const Center(child: Text("Errore nel formato dati"));
+            return const Center(child: Text("Errore dati"));
           }
 
-          // Gestione vocale
-          if (dati.containsKey('feedback')) {
-            flutterTts.speak(dati['feedback'].toString());
-          }
+          // Gestione vocale e logica di stato
+          if (dati.containsKey('feedback')) flutterTts.speak(dati['feedback'].toString());
           final String domanda = dati['domanda'] ?? "";
           if (domanda != "Sistema ok." && domanda != ultimaDomanda) {
             ultimaDomanda = domanda;
@@ -109,3 +105,4 @@ class _MonitorPageState extends State<MonitorPage> {
                               channel.sink.add(json.encode({"comando_testuale": _inputController.text}));
                               _inputController.clear();
                             }
+                          },
