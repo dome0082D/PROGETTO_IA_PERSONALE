@@ -8,6 +8,7 @@ void main() => runApp(const MyApp());
 
 class MyApp extends StatelessWidget {
   const MyApp({super.key});
+
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
@@ -20,6 +21,7 @@ class MyApp extends StatelessWidget {
 
 class MonitorPage extends StatefulWidget {
   const MonitorPage({super.key});
+
   @override
   State<MonitorPage> createState() => _MonitorPageState();
 }
@@ -51,10 +53,15 @@ class _MonitorPageState extends State<MonitorPage> {
           if (!snapshot.hasData) {
             return const Center(child: CircularProgressIndicator());
           }
-          
-          final Map<String, dynamic> dati = jsonDecode(snapshot.data);
-          
-          // GESTIONE VOCALE E RISPOSTE
+
+          Map<String, dynamic> dati;
+          try {
+            dati = jsonDecode(snapshot.data);
+          } catch (e) {
+            return const Center(child: Text("Errore nel formato dati"));
+          }
+
+          // Gestione vocale
           if (dati.containsKey('feedback')) {
             flutterTts.speak(dati['feedback'].toString());
           }
@@ -83,11 +90,15 @@ class _MonitorPageState extends State<MonitorPage> {
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         IconButton(
+                          icon: const Icon(Icons.help_outline),
+                          onPressed: () => channel.sink.add(json.encode({"comando_testuale": "cosa sai fare"})),
+                        ),
+                        IconButton(
                           icon: const Icon(Icons.attach_file),
                           onPressed: () async {
-                            FilePickerResult? result = await FilePicker.platform.pickFiles();
-                            if (result != null && result.files.single.path != null) {
-                              channel.sink.add(json.encode({"file_caricato": result.files.single.path}));
+                            FilePickerResult? res = await FilePicker.platform.pickFiles();
+                            if (res != null && res.files.single.path != null) {
+                              channel.sink.add(json.encode({"file_caricato": res.files.single.path}));
                             }
                           },
                         ),
@@ -98,40 +109,3 @@ class _MonitorPageState extends State<MonitorPage> {
                               channel.sink.add(json.encode({"comando_testuale": _inputController.text}));
                               _inputController.clear();
                             }
-                          },
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-                if (domanda != "Sistema ok." && domanda.isNotEmpty)
-                  Column(
-                    children: [
-                      const SizedBox(height: 20),
-                      Text(domanda, style: const TextStyle(color: Colors.yellow)),
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          ElevatedButton(onPressed: () => channel.sink.add(json.encode({"azione": "pulisci"})), child: const Text("SI")),
-                          const SizedBox(width: 20),
-                          ElevatedButton(onPressed: () => setState(() => ultimaDomanda = ""), child: const Text("NO")),
-                        ],
-                      ),
-                    ],
-                  ),
-              ],
-            ),
-          );
-        },
-      ),
-    );
-  }
-
-  @override
-  void dispose() {
-    channel.sink.close();
-    flutterTts.stop();
-    _inputController.dispose();
-    super.dispose();
-  }
-}

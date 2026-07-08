@@ -25,14 +25,13 @@ domande_di_apprendimento = [
 ]
 
 def scansiona_sicura():
-    """Versione robusta: tenta di scansionare senza bloccare il sistema."""
     try:
         cap = cv2.VideoCapture(0)
         if not cap.isOpened():
             return "Visione Spaziale: NON DISPONIBILE"
         _, frame = cap.read()
         cap.release()
-        return visione.scansiona() # Assumendo che il modulo gestisca il frame
+        return visione.scansiona()
     except:
         return "Visione Spaziale: ERRORE"
 
@@ -76,36 +75,34 @@ async def handler(websocket):
                 comando = json.loads(message)
                 risposta = ""
                 
-                # 1. Azione: Pulizia
-                if comando.get("azione") == "pulisci":
+                # 1. Comando: Cosa sai fare
+                if "cosa sai fare" in str(comando).lower():
+                    risposta = ("Le mie funzioni attive sono: monitoraggio CPU e RAM in tempo reale, "
+                                "analisi immagini tramite OCR, ricerche rapide su Google, "
+                                "pulizia automatica dei file temporanei e archiviazione "
+                                "intelligente di informazioni nel mio nucleo di memoria.")
+                
+                # 2. Azione: Pulizia
+                elif comando.get("azione") == "pulisci" or "pulisci" in str(comando).lower():
                     risposta = fabbrica.pulisci_file_temporanei()
                 
-                # 2. Azione: Analisi Immagini
+                # 3. Azione: Analisi Immagini
                 elif "file_caricato" in comando:
                     percorso = comando["file_caricato"]
                     risposta = visione_ai.analizza_file(percorso)
                 
-                # 3. Azione: Conversazione e Memoria
+                # 4. Azione: Conversazione e Memoria
                 elif "comando_testuale" in comando:
                     testo = comando["comando_testuale"].lower()
-                    if "pulisci" in testo:
-                        risposta = fabbrica.pulisci_file_temporanei()
-                    elif "cerca" in testo:
+                    if "cerca" in testo:
                         risposta = cerca_su_google(testo.replace("cerca", "").strip())
                     else:
                         risposta = memoria.salva_informazione(comando["comando_testuale"])
-                        risposta = f"Registrato nel nucleo: {comando['comando_testuale']}"
+                        risposta = f"Ho registrato: {comando['comando_testuale']}. Grazie per l'informazione."
                 
                 if risposta:
                     await websocket.send(json.dumps({"feedback": str(risposta)}))
             except Exception as e:
                 logger.error(f"Errore comando: {e}")
 
-    await asyncio.gather(inviatore(), ricevitore())
-
-async def avvio_sistema():
-    # Avvia il battito proattivo come task background
-    asyncio.create_task(agente_proattivo.avvia_battito())
-    async with websockets.serve(handler, "127.0.0.1", 8080):
-        logger.info("IA Guardiano Online (Porta 8080).")
-        await asy
+    aw
