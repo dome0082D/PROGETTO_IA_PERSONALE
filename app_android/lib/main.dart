@@ -54,7 +54,7 @@ class _MonitorPageState extends State<MonitorPage> {
           
           final Map<String, dynamic> dati = jsonDecode(snapshot.data);
           
-          // GESTIONE VOCALE (Feedback e Domande)
+          // GESTIONE VOCALE E RISPOSTE
           if (dati.containsKey('feedback')) {
             flutterTts.speak(dati['feedback'].toString());
           }
@@ -64,7 +64,6 @@ class _MonitorPageState extends State<MonitorPage> {
             flutterTts.speak(domanda);
           }
 
-          // Estrazione sicura CPU
           final mon = dati.containsKey('monitoraggio') ? dati['monitoraggio'] : {'cpu': 0.0};
           final double cpuValue = (mon['cpu'] ?? 0.0).toDouble();
 
@@ -75,9 +74,7 @@ class _MonitorPageState extends State<MonitorPage> {
               children: [
                 Text("SICUREZZA: ${dati['sicurezza'] ?? 'NORMALE'}", style: const TextStyle(fontSize: 24)),
                 Text("${cpuValue.toStringAsFixed(1)}% CPU", style: const TextStyle(fontSize: 50)),
-                
                 const SizedBox(height: 30),
-                
                 TextField(
                   controller: _inputController,
                   decoration: InputDecoration(
@@ -90,8 +87,7 @@ class _MonitorPageState extends State<MonitorPage> {
                           onPressed: () async {
                             FilePickerResult? result = await FilePicker.platform.pickFiles();
                             if (result != null && result.files.single.path != null) {
-                              String path = result.files.single.path!;
-                              channel.sink.add(json.encode({"file_caricato": path}));
+                              channel.sink.add(json.encode({"file_caricato": result.files.single.path}));
                             }
                           },
                         ),
@@ -108,5 +104,34 @@ class _MonitorPageState extends State<MonitorPage> {
                     ),
                   ),
                 ),
-                
-                // Pulsanti SI/NO per le risposte proatt
+                if (domanda != "Sistema ok." && domanda.isNotEmpty)
+                  Column(
+                    children: [
+                      const SizedBox(height: 20),
+                      Text(domanda, style: const TextStyle(color: Colors.yellow)),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          ElevatedButton(onPressed: () => channel.sink.add(json.encode({"azione": "pulisci"})), child: const Text("SI")),
+                          const SizedBox(width: 20),
+                          ElevatedButton(onPressed: () => setState(() => ultimaDomanda = ""), child: const Text("NO")),
+                        ],
+                      ),
+                    ],
+                  ),
+              ],
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  @override
+  void dispose() {
+    channel.sink.close();
+    flutterTts.stop();
+    _inputController.dispose();
+    super.dispose();
+  }
+}
