@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 import 'package:flutter_tts/flutter_tts.dart';
-import 'package:file_picker/file_picker.dart';
 import 'dart:convert';
 
 void main() => runApp(const MyApp());
@@ -42,7 +41,6 @@ class _MonitorPageState extends State<MonitorPage> {
     await flutterTts.setSpeechRate(0.5);
   }
 
-  // --- Visualizzatore Dinamico ---
   Widget _buildVisualContent(Map<String, dynamic> dati) {
     String tipo = dati['tipo'] ?? 'TESTO';
     switch (tipo) {
@@ -67,7 +65,10 @@ class _MonitorPageState extends State<MonitorPage> {
           ),
         );
       default:
-        return Padding(padding: const EdgeInsets.all(16.0), child: Text(dati['contenuto']?.toString() ?? "In attesa..."));
+        return Padding(
+          padding: const EdgeInsets.all(16.0), 
+          child: Text(dati['contenuto']?.toString() ?? "In attesa...")
+        );
     }
   }
 
@@ -86,7 +87,6 @@ class _MonitorPageState extends State<MonitorPage> {
             return const Center(child: Text("Errore dati"));
           }
 
-          // Logica vocale e monitoraggio
           if (dati.containsKey('feedback')) flutterTts.speak(dati['feedback'].toString());
           final String content = dati['contenuto']?.toString() ?? "";
           if (content != "Sistema ok." && content != ultimaDomanda) {
@@ -111,4 +111,32 @@ class _MonitorPageState extends State<MonitorPage> {
                     suffixIcon: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        IconButton(icon: const Icon(Icons.attach_file), onPressed:
+                        IconButton(
+                          icon: const Icon(Icons.send),
+                          onPressed: () {
+                            final text = _inputController.text.trim();
+                            if (text.isNotEmpty) {
+                              channel.sink.add(jsonEncode({'comando': text}));
+                              _inputController.clear();
+                            }
+                          },
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  @override
+  void dispose() {
+    channel.sink.close();
+    _inputController.dispose();
+    super.dispose();
+  }
+}
