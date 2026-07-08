@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 import 'package:flutter_tts/flutter_tts.dart';
+import 'package:file_picker/file_picker.dart'; // Import per caricare le foto
 import 'dart:convert';
 
 void main() => runApp(const MyApp());
@@ -51,7 +52,7 @@ class _MonitorPageState extends State<MonitorPage> {
           
           final Map<String, dynamic> dati = jsonDecode(snapshot.data);
           
-          // 1. GESTIONE VOCALE (Feedback e Domande)
+          // GESTIONE VOCALE SICURA
           if (dati.containsKey('feedback')) {
             flutterTts.speak(dati['feedback']);
           }
@@ -61,59 +62,50 @@ class _MonitorPageState extends State<MonitorPage> {
             flutterTts.speak(domanda);
           }
 
+          // Estrazione sicura dei dati CPU
+          final mon = dati.containsKey('monitoraggio') ? dati['monitoraggio'] : {'cpu': 0.0};
+          final cpuValue = (mon['cpu'] ?? 0.0).toDouble();
+
           return Padding(
             padding: const EdgeInsets.all(20),
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Text("SICUREZZA: ${dati['sicurezza']}", style: const TextStyle(fontSize: 24)),
-                Text("${dati['monitoraggio']['cpu'].toStringAsFixed(1)}% CPU", style: const TextStyle(fontSize: 50)),
+                Text("SICUREZZA: ${dati['sicurezza'] ?? 'NORMALE'}", style: const TextStyle(fontSize: 24)),
+                Text("${cpuValue.toStringAsFixed(1)}% CPU", style: const TextStyle(fontSize: 50)),
                 
                 const SizedBox(height: 30),
-                // CAMPO DI INPUT (Scrittura comandi e ricerche)
+                
+                // CAMPO DI INPUT CON AGGIUNTA CARICAMENTO FILE
                 TextField(
                   controller: _inputController,
                   decoration: InputDecoration(
                     hintText: "Scrivi un comando o una ricerca...",
-                    suffixIcon: IconButton(
-                      icon: const Icon(Icons.send),
-                      onPressed: () {
-                        channel.sink.add(json.encode({"comando_testuale": _inputController.text}));
-                        _inputController.clear();
-                      },
+                    suffixIcon: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        // Pulsante per caricare file (Fase 2)
+                        IconButton(
+                          icon: const Icon(Icons.attach_file),
+                          onPressed: () async {
+                            FilePickerResult? result = await FilePicker.platform.pickFiles();
+                            if (result != null) {
+                              String path = result.files.single.path!;
+                              channel.sink.add(json.encode({"file_caricato": path}));
+                            }
+                          },
+                        ),
+                        // Pulsante invio testo
+                        IconButton(
+                          icon: const Icon(Icons.send),
+                          onPressed: () {
+                            channel.sink.add(json.encode({"comando_testuale": _inputController.text}));
+                            _inputController.clear();
+                          },
+                        ),
+                      ],
                     ),
                   ),
                 ),
                 
-                // PULSANTI (SI/NO per azioni proattive)
-                if (domanda != "Sistema ok." && domanda != "")
-                  Column(
-                    children: [
-                      const SizedBox(height: 20),
-                      Text(domanda, style: const TextStyle(color: Colors.yellow)),
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          ElevatedButton(onPressed: () => channel.sink.add(json.encode({"azione": "pulisci"})), child: const Text("SI")),
-                          const SizedBox(width: 20),
-                          ElevatedButton(onPressed: () => setState(() => ultimaDomanda = ""), child: const Text("NO")),
-                        ],
-                      ),
-                    ],
-                  ),
-              ],
-            ),
-          );
-        },
-      ),
-    );
-  }
-
-  @override
-  void dispose() {
-    channel.sink.close();
-    flutterTts.stop();
-    _inputController.dispose();
-    super.dispose();
-  }
-}
+                // PULSANTI (S

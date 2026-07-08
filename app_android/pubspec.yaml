@@ -1,8 +1,6 @@
 name: app_android
-description: "Monitoraggio IA Personale: Sistema di sicurezza e controllo hardware."
-
+description: "Monitoraggio IA Personale: Sistema di sicurezza, controllo hardware e apprendimento proattivo."
 publish_to: 'none'
-
 version: 1.0.0+1
 
 environment:
@@ -11,11 +9,17 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
-  # Libreria fondamentale per la comunicazione WebSocket con il server Python
+  
+  # Comunicazione in tempo reale col server Python
   web_socket_channel: ^3.0.1
-  # Libreria per la sintesi vocale (Text-to-Speech)
+  
+  # Sintesi vocale per le risposte dell'IA
   flutter_tts: ^4.0.2
-  # Utilizzato per la conversione JSON dei dati ricevuti
+  
+  # Gestione dei file per caricare foto e documenti
+  file_picker: ^8.0.0
+  
+  # Icone standard Material Design
   cupertino_icons: ^1.0.6
 
 dev_dependencies:
