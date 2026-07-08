@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 import 'package:flutter_tts/flutter_tts.dart';
-import 'package:file_picker/file_picker.dart'; // Import per caricare le foto
+import 'package:file_picker/file_picker.dart';
 import 'dart:convert';
 
 void main() => runApp(const MyApp());
@@ -48,23 +48,25 @@ class _MonitorPageState extends State<MonitorPage> {
       body: StreamBuilder(
         stream: channel.stream,
         builder: (context, snapshot) {
-          if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
+          if (!snapshot.hasData) {
+            return const Center(child: CircularProgressIndicator());
+          }
           
           final Map<String, dynamic> dati = jsonDecode(snapshot.data);
           
-          // GESTIONE VOCALE SICURA
+          // GESTIONE VOCALE (Feedback e Domande)
           if (dati.containsKey('feedback')) {
-            flutterTts.speak(dati['feedback']);
+            flutterTts.speak(dati['feedback'].toString());
           }
-          final domanda = dati['domanda'] ?? "";
+          final String domanda = dati['domanda'] ?? "";
           if (domanda != "Sistema ok." && domanda != ultimaDomanda) {
             ultimaDomanda = domanda;
             flutterTts.speak(domanda);
           }
 
-          // Estrazione sicura dei dati CPU
+          // Estrazione sicura CPU
           final mon = dati.containsKey('monitoraggio') ? dati['monitoraggio'] : {'cpu': 0.0};
-          final cpuValue = (mon['cpu'] ?? 0.0).toDouble();
+          final double cpuValue = (mon['cpu'] ?? 0.0).toDouble();
 
           return Padding(
             padding: const EdgeInsets.all(20),
@@ -76,31 +78,30 @@ class _MonitorPageState extends State<MonitorPage> {
                 
                 const SizedBox(height: 30),
                 
-                // CAMPO DI INPUT CON AGGIUNTA CARICAMENTO FILE
                 TextField(
                   controller: _inputController,
                   decoration: InputDecoration(
-                    hintText: "Scrivi un comando o una ricerca...",
+                    hintText: "Scrivi un comando...",
                     suffixIcon: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        // Pulsante per caricare file (Fase 2)
                         IconButton(
                           icon: const Icon(Icons.attach_file),
                           onPressed: () async {
                             FilePickerResult? result = await FilePicker.platform.pickFiles();
-                            if (result != null) {
+                            if (result != null && result.files.single.path != null) {
                               String path = result.files.single.path!;
                               channel.sink.add(json.encode({"file_caricato": path}));
                             }
                           },
                         ),
-                        // Pulsante invio testo
                         IconButton(
                           icon: const Icon(Icons.send),
                           onPressed: () {
-                            channel.sink.add(json.encode({"comando_testuale": _inputController.text}));
-                            _inputController.clear();
+                            if (_inputController.text.isNotEmpty) {
+                              channel.sink.add(json.encode({"comando_testuale": _inputController.text}));
+                              _inputController.clear();
+                            }
                           },
                         ),
                       ],
@@ -108,4 +109,4 @@ class _MonitorPageState extends State<MonitorPage> {
                   ),
                 ),
                 
-                // PULSANTI (S
+                // Pulsanti SI/NO per le risposte proatt

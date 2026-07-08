@@ -9,7 +9,7 @@ from googlesearch import search
 
 # Importazione moduli personalizzati
 import visione_reale as visione
-import visione_intelligente as visione_ai # <--- NUOVO: Modulo OCR
+import visione_intelligente as visione_ai
 import agente_proattivo
 import fabbrica
 import memoria
@@ -25,34 +25,38 @@ domande_di_apprendimento = [
 ]
 
 def scansiona_sicura():
-    cap = cv2.VideoCapture(0)
-    if not cap.isOpened():
-        return "Visione Spaziale: NON DISPONIBILE"
-    cap.release()
-    return visione.scansiona()
+    """Versione robusta: tenta di scansionare senza bloccare il sistema."""
+    try:
+        cap = cv2.VideoCapture(0)
+        if not cap.isOpened():
+            return "Visione Spaziale: NON DISPONIBILE"
+        _, frame = cap.read()
+        cap.release()
+        return visione.scansiona() # Assumendo che il modulo gestisca il frame
+    except:
+        return "Visione Spaziale: ERRORE"
 
 def cerca_su_google(query):
     try:
         risultati = list(search(query, num_results=1))
-        return f"Ho trovato questo per te: {risultati[0]}" if risultati else "Nessun risultato trovato."
+        return f"Ho trovato: {risultati[0]}" if risultati else "Nessun risultato."
     except Exception as e:
-        return f"Errore nella ricerca: {e}"
+        return f"Errore ricerca: {str(e)}"
 
 async def handler(websocket):
     logger.info("Connessione stabilita.")
     
     async def inviatore():
-        try:
-            while True:
+        while True:
+            try:
                 cpu = psutil.cpu_percent(interval=1)
                 mem = psutil.virtual_memory().percent
                 
+                domanda = "Sistema ok."
                 if cpu > 85:
                     domanda = "Carico elevato: vuoi eseguire pulizia?"
                 elif random.random() < 0.05:
                     domanda = random.choice(domande_di_apprendimento)
-                else:
-                    domanda = "Sistema ok."
                 
                 dati = {
                     "sicurezza": "ALLERTA" if cpu > 85 else "NORMALE",
@@ -62,25 +66,24 @@ async def handler(websocket):
                 }
                 await websocket.send(json.dumps(dati))
                 await asyncio.sleep(5)
-        except: pass
+            except Exception as e:
+                logger.error(f"Errore invio: {e}")
+                break
 
     async def ricevitore():
-        try:
-            async for message in websocket:
+        async for message in websocket:
+            try:
                 comando = json.loads(message)
-                logger.info(f"Comando ricevuto: {comando}")
-                
                 risposta = ""
                 
                 # 1. Azione: Pulizia
                 if comando.get("azione") == "pulisci":
                     risposta = fabbrica.pulisci_file_temporanei()
                 
-                # 2. Azione: Analisi Immagini (Fase 2)
+                # 2. Azione: Analisi Immagini
                 elif "file_caricato" in comando:
                     percorso = comando["file_caricato"]
                     risposta = visione_ai.analizza_file(percorso)
-                    risposta = f"Ho analizzato il file: {risposta}"
                 
                 # 3. Azione: Conversazione e Memoria
                 elif "comando_testuale" in comando:
@@ -88,23 +91,21 @@ async def handler(websocket):
                     if "pulisci" in testo:
                         risposta = fabbrica.pulisci_file_temporanei()
                     elif "cerca" in testo:
-                        query = testo.replace("cerca", "").strip()
-                        risposta = cerca_su_google(query)
+                        risposta = cerca_su_google(testo.replace("cerca", "").strip())
                     else:
                         risposta = memoria.salva_informazione(comando["comando_testuale"])
-                        risposta = f"Ho memorizzato: {comando['comando_testuale']}. Sono qui per imparare da te."
+                        risposta = f"Registrato nel nucleo: {comando['comando_testuale']}"
                 
                 if risposta:
-                    await websocket.send(json.dumps({"feedback": risposta}))
-        except: pass
+                    await websocket.send(json.dumps({"feedback": str(risposta)}))
+            except Exception as e:
+                logger.error(f"Errore comando: {e}")
 
     await asyncio.gather(inviatore(), ricevitore())
 
 async def avvio_sistema():
+    # Avvia il battito proattivo come task background
     asyncio.create_task(agente_proattivo.avvia_battito())
     async with websockets.serve(handler, "127.0.0.1", 8080):
         logger.info("IA Guardiano Online (Porta 8080).")
-        await asyncio.Future()
-
-if __name__ == "__main__":
-    asyncio.run(avvio_sistema())
+        await asy
