@@ -28,6 +28,8 @@ class BrainCore:
         """Monitoraggio attivo invia dati ogni 30 secondi"""
         while True:
             try:
+                # Nota: assicurati che le funzioni di agente_hardware siano asincrone 
+                # se richiedono tempo, altrimenti vanno bene così.
                 report, anomalie = agente_hardware.analizza_sistema()
                 monitoraggio = {"cpu": agente_hardware.get_cpu_usage()}
                 
@@ -72,19 +74,24 @@ class BrainCore:
         except Exception as e:
             return {"tipo": "TESTO", "contenuto": f"Errore: {str(e)}", "sicurezza": "ERRORE"}
 
-async def handler(websocket, path):
-    brain = BrainCore()
-    # Gestione in parallelo: monitoraggio costante + ricezione comandi
-    tasks = [
-        asyncio.create_task(brain.monitoraggio_loop(websocket)),
-        asyncio.create_task(handle_client(websocket, brain))
-    ]
-    await asyncio.wait(tasks)
-
 async def handle_client(websocket, brain):
+    """Gestisce esclusivamente la ricezione dei comandi dal client"""
     async for message in websocket:
         response = await brain.process_message(message)
         await websocket.send(json.dumps(response))
+
+async def handler(websocket, path):
+    brain = BrainCore()
+    # Utilizziamo gather per mantenere vive entrambe le task in parallelo
+    try:
+        await asyncio.gather(
+            brain.monitoraggio_loop(websocket),
+            handle_client(websocket, brain)
+        )
+    except websockets.exceptions.ConnectionClosed:
+        print("Connessione chiusa dal client.")
+    except Exception as e:
+        print(f"Errore nel gestore WebSocket: {e}")
 
 async def main():
     print("SIA - Sistema Integrato Autonomo Online su ws://127.0.0.1:8080")
@@ -94,5 +101,4 @@ async def main():
 if __name__ == "__main__":
     try:
         asyncio.run(main())
-    except KeyboardInterrupt:
-        print("\nSIA - Spegnimento in corso...")
+    except KeyboardInterrupt
