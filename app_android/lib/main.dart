@@ -113,3 +113,17 @@ class _MonitorPageState extends State<MonitorPage> {
                       onPressed: () {
                         if (_inputController.text.isNotEmpty) {
                           channel.sink.add(jsonEncode({'comando_testuale': _inputController.text}));
+                          _inputController.clear();
+                        }
+                      },
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          );
+        },
+      ),
+    );
+  }
+}
