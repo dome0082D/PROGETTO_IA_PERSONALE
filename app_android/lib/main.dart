@@ -66,8 +66,8 @@ class _MonitorPageState extends State<MonitorPage> {
         );
       default:
         return Padding(
-          padding: const EdgeInsets.all(16.0), 
-          child: Text(dati['contenuto']?.toString() ?? "In attesa...")
+          padding: const EdgeInsets.all(16.0),
+          child: Text(dati['contenuto']?.toString() ?? "In attesa..."),
         );
     }
   }
@@ -108,35 +108,8 @@ class _MonitorPageState extends State<MonitorPage> {
                   controller: _inputController,
                   decoration: InputDecoration(
                     hintText: "Scrivi un comando...",
-                    suffixIcon: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        IconButton(
-                          icon: const Icon(Icons.send),
-                          onPressed: () {
-                            final text = _inputController.text.trim();
-                            if (text.isNotEmpty) {
-                              channel.sink.add(jsonEncode({'comando': text}));
-                              _inputController.clear();
-                            }
-                          },
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          );
-        },
-      ),
-    );
-  }
-
-  @override
-  void dispose() {
-    channel.sink.close();
-    _inputController.dispose();
-    super.dispose();
-  }
-}
+                    suffixIcon: IconButton(
+                      icon: const Icon(Icons.send),
+                      onPressed: () {
+                        if (_inputController.text.isNotEmpty) {
+                          channel.sink.add(jsonEncode({'comando_testuale': _inputController.text}));
