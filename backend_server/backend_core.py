@@ -87,7 +87,7 @@ class BrainCore:
         except Exception as e:
             return {"tipo": "TESTO", "contenuto": f"Errore: {str(e)}", "sicurezza": "ERRORE"}
 
-async def handle_client(websocket, brain):
+async def handle_client(websocket, brain): 
     """Gestisce la ricezione dei comandi dal client"""
     try:
         async for message in websocket:
@@ -97,15 +97,17 @@ async def handle_client(websocket, brain):
         print(f"Connessione chiusa o errore: {e}")
 
 async def handler(websocket, path):
-    """Gestore principale delle connessioni WebSocket con parametro path corretto"""
+    """Gestore principale delle connessioni WebSocket che accetta i 2 argomenti necessari"""
     brain = BrainCore()
     # Esecuzione parallela monitoraggio e ricezione messaggi
-    await asyncio.gather(
-        brain.monitoraggio_loop(websocket),
-        handle_client(websocket, brain)
-    )
-except Exception as e:
-    print(f"Errore connessione: {e}")
+    try:
+        await asyncio.gather(
+            brain.monitoraggio_loop(websocket),
+            handle_client(websocket, brain)
+        )
+    except Exception as e:
+        print(f"Errore nella gestione della connessione: {e}")
+
 async def main():
     print("SIA - Sistema Integrato Autonomo Online su ws://127.0.0.1:8080")
     async with websockets.serve(handler, "127.0.0.1", 8080):
