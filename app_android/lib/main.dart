@@ -116,4 +116,19 @@ class _MonitorPageState extends State<MonitorPage> {
                 Text("${cpuValue.toStringAsFixed(1)}% CPU", style: const TextStyle(fontSize: 40)),
                 Expanded(child: _buildVisualContent(dati)),
                 TextField(
-channel.sink.add(jsonEncode({'comando_testuale': _inputController.text}));
+                  controller: _inputController,
+                  decoration: InputDecoration(
+                    hintText: 'Invia comando',
+                    suffixIcon: IconButton(
+                      icon: const Icon(Icons.send),
+                      onPressed: () {
+                        channel.sink.add(jsonEncode({'comando_testuale': _inputController.text}));
+                        _inputController.clear();
+                      },
+                    ),
+                  ),
+                  onSubmitted: (value) {
+                    channel.sink.add(jsonEncode({'comando_testuale': value}));
+                    _inputController.clear();
+                  },
+                ),
