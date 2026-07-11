@@ -1,11 +1,13 @@
 import asyncio
 import websockets
 import json
-import ollama
 import os
 import agente_hardware
 import agente_informativo
 import agente_filosofico
+
+# Import di 'ollama' spostato al momento dell'uso per evitare errori di import
+ollama = None
 
 class BrainCore:
     def __init__(self):
@@ -65,8 +67,15 @@ class BrainCore:
                 return {"tipo": "TESTO", "contenuto": agente_filosofico.rifletti_sul_mondo(agente_informativo.esegui("news")), "sicurezza": "FILOSOFICO"}
                 
             else:
-                res = ollama.chat(model='llama3', messages=[{'role': 'user', 'content': comando}])
-                risposta = res['message']['content']
+                # Import dinamico per ridurre falsi positivi degli linter e supportare ambienti senza il pacchetto
+                try:
+                    import importlib
+                    _ollama = importlib.import_module("ollama")
+                except Exception:
+                    raise Exception("Modulo 'ollama' non disponibile. Installa il pacchetto ollama o configura correttamente l'ambiente.")
+
+                res = _ollama.chat(model='llama3', messages=[{'role': 'user', 'content': comando}])
+                risposta = res.get('message', {}).get('content', '')
                 self.salva_in_memoria(comando, risposta)
                 return {"tipo": "TESTO", "contenuto": risposta, "sicurezza": "OPERATIVO"}
         except Exception as e:
