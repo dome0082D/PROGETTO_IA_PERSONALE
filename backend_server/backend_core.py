@@ -1,18 +1,7 @@
 import asyncio
 import websockets
 import json
-try:
-    import importlib
-    ollama = importlib.import_module("ollama")
-except Exception:  # pragma: no cover - provide clear error if missing at runtime
-    class _OllamaStub:
-        @staticmethod
-        def chat(*args, **kwargs):
-            raise RuntimeError(
-                "Missing 'ollama' package. Install it or ensure it's importable to use AI features."
-            )
-
-    ollama = _OllamaStub()
+import ollama
 import os
 import agente_hardware
 import agente_informativo
@@ -39,7 +28,8 @@ class BrainCore:
         """Monitoraggio attivo invia dati ogni 30 secondi"""
         while True:
             try:
-                report, anomalie = agente_hardware.analizza_sistema()
+                # Recupero dati dagli agenti
+                _, anomalie = agente_hardware.analizza_sistema()
                 monitoraggio = {"cpu": agente_hardware.get_cpu_usage()}
                 
                 payload = {
@@ -54,6 +44,8 @@ class BrainCore:
                 
                 await websocket.send(json.dumps(payload))
                 await asyncio.sleep(30)
+            except websockets.exceptions.ConnectionClosed:
+                break # Esci dal loop se il client si disconnette
             except Exception as e:
                 print(f"Errore monitoraggio: {e}")
                 await asyncio.sleep(60)
@@ -64,53 +56,48 @@ class BrainCore:
             comando = data.get("comando_testuale", "").lower()
             
             if "meteo" in comando:
-                dati = agente_informativo.esegui("meteo")
-                return {"tipo": "TABELLA", "contenuto": dati, "sicurezza": "OPERATIVO"}
+                return {"tipo": "TABELLA", "contenuto": agente_informativo.esegui("meteo"), "sicurezza": "OPERATIVO"}
             
             elif "news" in comando:
-                dati = agente_informativo.esegui("news")
-                return {"tipo": "LISTA", "contenuto": dati, "sicurezza": "OPERATIVO"}
+                return {"tipo": "LISTA", "contenuto": agente_informativo.esegui("news"), "sicurezza": "OPERATIVO"}
                 
             elif "rifletti" in comando or "mondo" in comando:
-                riflessione = agente_filosofico.rifletti_sul_mondo(agente_informativo.esegui("news"))
-                return {"tipo": "TESTO", "contenuto": riflessione, "sicurezza": "FILOSOFICO"}
+                return {"tipo": "TESTO", "contenuto": agente_filosofico.rifletti_sul_mondo(agente_informativo.esegui("news")), "sicurezza": "FILOSOFICO"}
                 
             else:
-                # Correzione: Gestione errori specifica per Ollama
-                try:
-                    res = ollama.chat(model='llama3', messages=[{'role': 'user', 'content': comando}])
-                    risposta = res['message']['content']
-                    self.salva_in_memoria(comando, risposta)
-                    return {"tipo": "TESTO", "contenuto": risposta, "sicurezza": "OPERATIVO"}
-                except Exception as ollama_e:
-                    return {"tipo": "TESTO", "contenuto": f"Errore AI: {str(ollama_e)}", "sicurezza": "ERRORE"}
+                res = ollama.chat(model='llama3', messages=[{'role': 'user', 'content': comando}])
+                risposta = res['message']['content']
+                self.salva_in_memoria(comando, risposta)
+                return {"tipo": "TESTO", "contenuto": risposta, "sicurezza": "OPERATIVO"}
         except Exception as e:
-            return {"tipo": "TESTO", "contenuto": f"Errore: {str(e)}", "sicurezza": "ERRORE"}
+            return {"tipo": "TESTO", "contenuto": f"Errore elaborazione: {str(e)}", "sicurezza": "ERRORE"}
 
-async def handle_client(websocket, brain): 
-    """Gestisce la ricezione dei comandi dal client"""
+async def handle_client(websocket, brain):
+    """Gestisce la ricezione dei comandi dal client Flutter"""
     try:
         async for message in websocket:
             response = await brain.process_message(message)
             await websocket.send(json.dumps(response))
-    except Exception as e:
-        print(f"Connessione chiusa o errore: {e}")
+    except websockets.exceptions.ConnectionClosed:
+        pass # Disconnessione normale
 
 async def handler(websocket, path):
-    """Gestore principale delle connessioni WebSocket che accetta i 2 argomenti necessari"""
+    """Gestore principale che accetta websocket e path"""
     brain = BrainCore()
-    # Esecuzione parallela monitoraggio e ricezione messaggi
-    try:
-        await asyncio.gather(
-            brain.monitoraggio_loop(websocket),
-            handle_client(websocket, brain)
-        )
-    except Exception as e:
-        print(f"Errore nella gestione della connessione: {e}")
+    # Esecuzione parallela monitoraggio e ricezione comandi
+    await asyncio.gather(
+        brain.monitoraggio_loop(websocket),
+        handle_client(websocket, brain)
+    )
 
 async def main():
     print("SIA - Sistema Integrato Autonomo Online su ws://127.0.0.1:8080")
+    # Impostiamo il server con gestione robusta delle connessioni
     async with websockets.serve(handler, "127.0.0.1", 8080):
         await asyncio.Future()  # Esecuzione infinita
+
 if __name__ == "__main__":
-    asyncio.run(main())
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        print("\nSIA - Spegnimento in corso...")
