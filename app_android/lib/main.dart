@@ -27,11 +27,12 @@ class _MonitorPageState extends State<MonitorPage> {
   late WebSocketChannel channel;
   final FlutterTts flutterTts = FlutterTts();
   final TextEditingController _inputController = TextEditingController();
-  String ultimaDomanda = "";
+  String ultimaLettura = ""; // Variabile rinominata per chiarezza
 
   @override
   void initState() {
     super.initState();
+    // Il server è su ws://127.0.0.1:8080
     channel = WebSocketChannel.connect(Uri.parse('ws://127.0.0.1:8080'));
     initTts();
   }
@@ -41,8 +42,22 @@ class _MonitorPageState extends State<MonitorPage> {
     await flutterTts.setSpeechRate(0.5);
   }
 
+  // LOGICA CORRETTA PER LA GESTIONE TTS
+  void gestisciTts(Map<String, dynamic> dati) {
+    if (dati.containsKey('tipo') && dati['tipo'] == 'TESTO' && dati.containsKey('contenuto')) {
+      String contenuto = dati['contenuto'].toString();
+      if (contenuto != ultimaLettura) {
+        ultimaLettura = contenuto;
+        flutterTts.speak(contenuto);
+      }
+    }
+  }
+
   Widget _buildVisualContent(Map<String, dynamic> dati) {
-    String tipo = dati['tipo'] ?? 'TESTO';
+    String tipo = dati['tipo'] ?? 'MONITOR';
+    // Se è un monitoraggio, non mostriamo nulla o mostriamo un widget dedicato
+    if (tipo == 'MONITOR') return const SizedBox.shrink();
+
     switch (tipo) {
       case 'TABELLA':
         return SingleChildScrollView(
@@ -67,7 +82,7 @@ class _MonitorPageState extends State<MonitorPage> {
       default:
         return Padding(
           padding: const EdgeInsets.all(16.0),
-          child: Text(dati['contenuto']?.toString() ?? "In attesa..."),
+          child: Text(dati['contenuto']?.toString() ?? ""),
         );
     }
   }
@@ -78,21 +93,17 @@ class _MonitorPageState extends State<MonitorPage> {
       body: StreamBuilder(
         stream: channel.stream,
         builder: (context, snapshot) {
+          if (snapshot.hasError) return const Center(child: Text("Errore connessione"));
           if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
           
           Map<String, dynamic> dati;
           try {
             dati = jsonDecode(snapshot.data);
+            gestisciTts(dati); // Chiamata separata sicura
           } catch (e) {
-            return const Center(child: Text("Errore dati"));
+            return const Center(child: Text("Errore formattazione dati"));
           }
 
-          if (dati.containsKey('feedback')) flutterTts.speak(dati['feedback'].toString());
-          final String content = dati['contenuto']?.toString() ?? "";
-          if (content != "Sistema ok." && content != ultimaDomanda) {
-            ultimaDomanda = content;
-            flutterTts.speak(content);
-          }
           final mon = dati.containsKey('monitoraggio') ? dati['monitoraggio'] : {'cpu': 0.0};
           final double cpuValue = (mon['cpu'] ?? 0.0).toDouble();
 
@@ -105,25 +116,4 @@ class _MonitorPageState extends State<MonitorPage> {
                 Text("${cpuValue.toStringAsFixed(1)}% CPU", style: const TextStyle(fontSize: 40)),
                 Expanded(child: _buildVisualContent(dati)),
                 TextField(
-                  controller: _inputController,
-                  decoration: InputDecoration(
-                    hintText: "Scrivi un comando...",
-                    suffixIcon: IconButton(
-                      icon: const Icon(Icons.send),
-                      onPressed: () {
-                        if (_inputController.text.isNotEmpty) {
-                          channel.sink.add(jsonEncode({'comando_testuale': _inputController.text}));
-                          _inputController.clear();
-                        }
-                      },
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          );
-        },
-      ),
-    );
-  }
-}
+channel.sink.add(jsonEncode({'comando_testuale': _inputController.text}));
