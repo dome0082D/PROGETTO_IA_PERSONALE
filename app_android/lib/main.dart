@@ -132,3 +132,11 @@ class _MonitorPageState extends State<MonitorPage> {
                     _inputController.clear();
                   },
                 ),
+              ],
+            ),
+          );
+        },
+      ),
+    );
+  }
+}
