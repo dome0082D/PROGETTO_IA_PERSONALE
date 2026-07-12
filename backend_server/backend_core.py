@@ -1,4 +1,4 @@
-import asyncio
+import asyncio  # <-- CORRETTO: la 'i' deve essere minuscola
 import json
 import os
 import sys
@@ -100,5 +100,5 @@ class BrainCore:
                 except Exception:
                     pass
         except Exception as e:
-            print(f"[ERRORE] Elaborazione messaggio: {e}")
-            return {"tipo": "ERRORE", "contenuto": "Errore interno", "sicurezza": "ERRORE"}
+            print(f"[ERRORE] Elaborazione messaggio fallita: {e}")
+            return {"tipo": "ERRORE", "contenuto": "Errore nel processamento del comando"}          
