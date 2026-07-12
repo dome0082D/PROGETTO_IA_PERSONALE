@@ -1,10 +1,11 @@
-print("IL FILE é PARTITO!")
-import asyncio  # <-- CORRETTO: la 'i' deve essere minuscola
+print("IL FILE È PARTITO!")
+import asyncio
 import json
 import os
 import sys
+import base64
 
-# Gestione robusta dell'importazione di websockets per prevenire SyntaxError su Python 3.14+
+# Gestione robusta dell'importazione di websockets
 try:
     import websockets
 except SyntaxError as e:
@@ -14,6 +15,11 @@ except SyntaxError as e:
 except ImportError:
     print("\n[ERRORE]: Libreria 'websockets' mancante. Esegui: pip install websockets\n")
     sys.exit(1)
+
+# Gestione robusta dell'importazione vocale
+edge_tts = None
+# L'importazione verrà eseguita solo quando necessario, in modo che il modulo
+# non blocchi l'importazione del file se non è disponibile.
 
 # Importazione di tutti gli agenti richiesti
 import agente_hardware
@@ -46,6 +52,27 @@ class BrainCore:
                 json.dump(memoria, f, indent=4, ensure_ascii=False)
         except Exception as e:
             print(f"[ERRORE] Scrittura memoria fallita: {e}")
+
+    async def genera_audio_base64(self, testo_da_pronunciare):
+        """Trasforma il testo in un file audio generato localmente e lo converte in stringa Base64."""
+        try:
+            # Importazioni corazzate direttamente dentro la funzione!
+            import edge_tts 
+            import base64
+            
+            # Usiamo la voce italiana neurale
+            communicate = edge_tts.Communicate(testo_da_pronunciare, "it-IT-ElsaNeural")
+            audio_bytes = b""
+            
+            async for chunk in communicate.stream():
+                if chunk["type"] == "audio":
+                    audio_bytes += chunk["data"]
+            
+            audio_base64 = base64.b64encode(audio_bytes).decode('utf-8')
+            return audio_base64
+        except Exception as e:
+            print(f"[ERRORE SINTESI VOCALE]: {e}")
+            return None
 
     async def monitoraggio_loop(self, websocket):
         """Invia dati di monitoraggio hardware e rete finché la connessione è aperta."""
@@ -83,10 +110,11 @@ class BrainCore:
                 await websocket.send(json.dumps(payload))
                 await asyncio.sleep(30)
         except (websockets.exceptions.ConnectionClosed, asyncio.CancelledError):
-            pass  # Chiusura pulita del task di monitoraggio
+            return
         except Exception as e:
-            print(f"[ERRORE] Loop di monitoraggio: {e}")
-
+            print(f"[ERRORE MONITORAGGIO]: {e}")
+            return
+        
     async def process_message(self, message):
         """Elabora i comandi ricevuti dal client e smista ai rispettivi agenti."""
         print(f"\n[DEBUG] Messaggio grezzo arrivato da Flutter: {message}")
@@ -110,7 +138,6 @@ class BrainCore:
             elif "news" in comando or "notizie" in comando:
                 print("[DEBUG] Attivazione Agente News...")
                 try:
-                    # Assicurati che la funzione dentro agente_news si chiami così, o cambiala in .esegui()
                     dati = agente_news.ottieni_ultime_notizie() 
                     return {"tipo": "LISTA", "contenuto": dati, "sicurezza": "OPERATIVO"}
                 except Exception as e:
@@ -127,19 +154,41 @@ class BrainCore:
                     print(f"[ERRORE GRAFICO]: {e}")
                     return {"tipo": "TESTO", "contenuto": f"Errore nell'agente grafico: {e}", "sicurezza": "ERRORE"}
 
-            # 4. Modello AI Base (Tutto il resto)
+            # 4. Modello AI Base / Universale (Tutto il resto)
             else:
-                print("[DEBUG] Comando generico, passo l'input all'Intelligenza Artificiale...")
+                print("[DEBUG] Input generico ricevuto. Passo tutto a Llama 3...")
                 try:
                     import ollama
-                    res = ollama.chat(model='llama3', messages=[{'role': 'user', 'content': comando}])
+                    
+                    istruzione_sistema = (
+                        "Sei SIA, un assistente virtuale iper-intelligente e autonomo. "
+                        "Hai competenze da programmatore senior, "
+                        "ma sei programmato per rispondere a qualsiasi tipo di input, domanda, codice o conversazione casuale. "
+                        "Sii sempre preciso, conciso e rispondi in italiano."
+                    )
+                    
+                    res = ollama.chat(
+                        model='llama3', 
+                        messages=[
+                            {'role': 'system', 'content': istruzione_sistema},
+                            {'role': 'user', 'content': comando}
+                        ]
+                    )
                     risposta = res.get('message', {}).get('content', 'Nessuna risposta dal modello.')
                     
-                    # Salva la conversazione per farla imparare
+                    # Salva in memoria per l'apprendimento continuo
                     self.salva_in_memoria(comando, risposta)
-                    print("[DEBUG] Risposta AI generata e salvata in memoria.")
+                    print("[DEBUG] Risposta IA generata e salvata in memoria.")
                     
-                    return {"tipo": "TESTO", "contenuto": risposta, "sicurezza": "OPERATIVO"}
+                    # Genera l'audio della risposta
+                    audio_generato = await self.genera_audio_base64(risposta)
+                    
+                    return {
+                        "tipo": "TESTO", 
+                        "contenuto": risposta, 
+                        "audio": audio_generato,
+                        "sicurezza": "OPERATIVO"
+                    }
                 except ImportError:
                     print("[DEBUG] Errore: libreria Ollama non installata.")
                     return {"tipo": "TESTO", "contenuto": f"Ho ricevuto: '{comando}'. (Installa la libreria 'ollama' nel server per attivare le risposte AI).", "sicurezza": "OPERATIVO"}
@@ -149,7 +198,7 @@ class BrainCore:
 
         except Exception as e:
             print(f"[ERRORE FATALE JSON]: Impossibile leggere il messaggio di Flutter: {e}")
-            return {"tipo": "ERRORE", "contenuto": "Formato messaggio non valido", "sicurezza": "ERRORE"}         
+            return {"tipo": "ERRORE", "contenuto": "Formato messaggio non valido", "sicurezza": "ERRORE"}
 async def handler(websocket, *args):
     """Gestore della connessione WebSocket."""
     brain = BrainCore()
@@ -173,12 +222,13 @@ async def handler(websocket, *args):
 
 
 async def main():
-    host = "127.0.0.1"
+    # 0.0.0.0 permette a Flutter di connettersi anche da Android (tramite IP locale)
+    host = "0.0.0.0"
     port = 8080
     print(f"SIA - Sistema Integrato Autonomo Online su ws://{host}:{port}")
     try:
         async with websockets.serve(handler, host, port):
-            await asyncio.Future() # <--- QUESTO è il comando che lo tiene acceso all'infinito!
+            await asyncio.Future() # <--- QUESTO È IL MOTORE CHE TIENE ACCESO IL SERVER ALL'INFINITO!
     except OSError as e:
         print(f"\n[ERRORE AVVIO]: Impossibile avviare il server. Porta {port} occupata?")
 
@@ -187,4 +237,4 @@ if __name__ == "__main__":
     try:
         asyncio.run(main())
     except KeyboardInterrupt:
-        pass
+        print("\n[CHIUSURA] Server SIA terminato manualmente. Arrivederci!")
