@@ -89,26 +89,101 @@ class BrainCore:
 
     async def process_message(self, message):
         """Elabora i comandi ricevuti dal client e smista ai rispettivi agenti."""
+        print(f"\n[DEBUG] Messaggio grezzo arrivato da Flutter: {message}")
+        
         try:
             data = json.loads(message)
             comando = data.get("comando_testuale", "").lower().strip()
+            print(f"[DEBUG] Comando estratto con successo: '{comando}'")
 
-            # 1. Logica Agente Meteo (Esecuzione preferenziale sul nuovo modulo dedicato)
+            # 1. Agente Meteo
             if "meteo" in comando:
+                print("[DEBUG] Attivazione Agente Meteo...")
                 try:
-                    dati_meteo = agente_meteo.ottieni_previsioni()
-                    return {"tipo": "TABELLA", "contenuto": dati_meteo, "sicurezza": "OPERATIVO"}
-                except Exception:
-                    pass
-        except Exception as e:
-            print(f"[ERRORE] Elaborazione messaggio fallita: {e}")
-            return {"tipo": "ERRORE", "contenuto": "Errore nel processamento del comando"}          
-if __name__ == "__main__":
-    async def main():
-        # Placeholder main: initialize core. Replace with server startup as needed.
-        core = BrainCore()
-        await asyncio.sleep(0)
+                    dati = agente_meteo.esegui()
+                    return {"tipo": "TABELLA", "contenuto": dati, "sicurezza": "OPERATIVO"}
+                except Exception as e:
+                    print(f"[ERRORE METEO]: {e}")
+                    return {"tipo": "TESTO", "contenuto": f"Errore nell'agente meteo: {e}", "sicurezza": "ERRORE"}
 
+            # 2. Agente News
+            elif "news" in comando or "notizie" in comando:
+                print("[DEBUG] Attivazione Agente News...")
+                try:
+                    # Assicurati che la funzione dentro agente_news si chiami così, o cambiala in .esegui()
+                    dati = agente_news.ottieni_ultime_notizie() 
+                    return {"tipo": "LISTA", "contenuto": dati, "sicurezza": "OPERATIVO"}
+                except Exception as e:
+                    print(f"[ERRORE NEWS]: {e}")
+                    return {"tipo": "TESTO", "contenuto": f"Errore nell'agente news: {e}", "sicurezza": "ERRORE"}
+
+            # 3. Agente Grafico
+            elif "grafico" in comando:
+                print("[DEBUG] Attivazione Agente Grafico...")
+                try:
+                    dati = agente_grafico.genera_rappresentazione(comando)
+                    return {"tipo": "IMMAGINE", "contenuto": dati, "sicurezza": "OPERATIVO"}
+                except Exception as e:
+                    print(f"[ERRORE GRAFICO]: {e}")
+                    return {"tipo": "TESTO", "contenuto": f"Errore nell'agente grafico: {e}", "sicurezza": "ERRORE"}
+
+            # 4. Modello AI Base (Tutto il resto)
+            else:
+                print("[DEBUG] Comando generico, passo l'input all'Intelligenza Artificiale...")
+                try:
+                    import ollama
+                    res = ollama.chat(model='llama3', messages=[{'role': 'user', 'content': comando}])
+                    risposta = res.get('message', {}).get('content', 'Nessuna risposta dal modello.')
+                    
+                    # Salva la conversazione per farla imparare
+                    self.salva_in_memoria(comando, risposta)
+                    print("[DEBUG] Risposta AI generata e salvata in memoria.")
+                    
+                    return {"tipo": "TESTO", "contenuto": risposta, "sicurezza": "OPERATIVO"}
+                except ImportError:
+                    print("[DEBUG] Errore: libreria Ollama non installata.")
+                    return {"tipo": "TESTO", "contenuto": f"Ho ricevuto: '{comando}'. (Installa la libreria 'ollama' nel server per attivare le risposte AI).", "sicurezza": "OPERATIVO"}
+                except Exception as e:
+                    print(f"[ERRORE AI]: {e}")
+                    return {"tipo": "TESTO", "contenuto": f"Il modello AI è offline o in errore: {e}", "sicurezza": "ERRORE"}
+
+        except Exception as e:
+            print(f"[ERRORE FATALE JSON]: Impossibile leggere il messaggio di Flutter: {e}")
+            return {"tipo": "ERRORE", "contenuto": "Formato messaggio non valido", "sicurezza": "ERRORE"}         
+async def handler(websocket, *args):
+    """Gestore della connessione WebSocket."""
+    brain = BrainCore()
+    monitor_task = asyncio.create_task(brain.monitoraggio_loop(websocket))
+
+    try:
+        async for message in websocket:
+            response = await brain.process_message(message)
+            if response:
+                await websocket.send(json.dumps(response, ensure_ascii=False))
+    except websockets.exceptions.ConnectionClosed:
+        pass
+    except Exception as e:
+        print(f"[ERRORE] Gestione connessione client: {e}")
+    finally:
+        monitor_task.cancel()
+        try:
+            await monitor_task
+        except asyncio.CancelledError:
+            pass
+
+
+async def main():
+    host = "127.0.0.1"
+    port = 8080
+    print(f"SIA - Sistema Integrato Autonomo Online su ws://{host}:{port}")
+    try:
+        async with websockets.serve(handler, host, port):
+            await asyncio.Future() # <--- QUESTO è il comando che lo tiene acceso all'infinito!
+    except OSError as e:
+        print(f"\n[ERRORE AVVIO]: Impossibile avviare il server. Porta {port} occupata?")
+
+
+if __name__ == "__main__":
     try:
         asyncio.run(main())
     except KeyboardInterrupt:
