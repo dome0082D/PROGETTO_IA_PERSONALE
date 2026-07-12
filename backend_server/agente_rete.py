@@ -1,10 +1,19 @@
 import psutil
-import speedtest # Richiede: pip install speedtest-cli
+try:
+    import speedtest  # Richiede: pip install speedtest-cli
+except ImportError:
+    speedtest = None
 import time
 
 def monitora_rete():
     # 1. Controllo base: Stato dell'interfaccia
     connessioni = psutil.net_if_stats()
+
+    if speedtest is None:
+        report = "Stato Rete: test velocità non disponibile (speedtest non installato)."
+        anomalie = []
+        return report, anomalie
+
     # 2. Controllo qualità: Latenza e banda (opzionale, esegue un test veloce)
     st = speedtest.Speedtest(secure=True)
     download_speed = st.download() / 1_000_000 # Mbps

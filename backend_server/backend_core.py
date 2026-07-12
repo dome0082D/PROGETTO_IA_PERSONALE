@@ -1,3 +1,4 @@
+print("IL FILE é PARTITO!")
 import asyncio  # <-- CORRETTO: la 'i' deve essere minuscola
 import json
 import os
@@ -102,3 +103,13 @@ class BrainCore:
         except Exception as e:
             print(f"[ERRORE] Elaborazione messaggio fallita: {e}")
             return {"tipo": "ERRORE", "contenuto": "Errore nel processamento del comando"}          
+if __name__ == "__main__":
+    async def main():
+        # Placeholder main: initialize core. Replace with server startup as needed.
+        core = BrainCore()
+        await asyncio.sleep(0)
+
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        pass
