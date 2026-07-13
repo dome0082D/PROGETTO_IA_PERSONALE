@@ -110,8 +110,8 @@ class _MonitorPageState extends State<MonitorPage> {
   void gestisciTts(Map<String, dynamic> dati) {
     if (dati['tipo'] == 'TESTO' && dati.containsKey('contenuto')) {
       String contenuto = dati['contenuto'].toString();
-      if (contenido != ultimaLettura) {
-        ultimaLettura = contenido;
+      if (contenuto != ultimaLettura) {
+        ultimaLettura = contenuto;
         flutterTts.speak(contenuto);
       }
     }
@@ -143,7 +143,8 @@ class _MonitorPageState extends State<MonitorPage> {
               physics: const BouncingScrollPhysics(),
               child: DataTable(
                 columns: const [DataColumn(label: Text('Info')), DataColumn(label: Text('Valore'))],
-                rows: contenuto.map((r) {
+                // Aggiunto cast esplicito <DataRow> per evitare errori di compilazione/runtime
+                rows: contenuto.map<DataRow>((r) {
                   String chiave = "";
                   String valore = "";
                   if (r is Map) {
@@ -178,6 +179,7 @@ class _MonitorPageState extends State<MonitorPage> {
         return SizedBox.expand(
           child: ListView.builder(
             physics: const BouncingScrollPhysics(),
+            // CORRETTO: rimosso l'ultimo "contenido" rimasto e sostituito con "contenuto"
             itemCount: contenuto.length,
             itemBuilder: (context, index) {
               final item = contenuto[index];
@@ -287,7 +289,7 @@ class _MonitorPageState extends State<MonitorPage> {
                 textAlign: TextAlign.center,
               ),
               const SizedBox(height: 15),
-              // Area centrale dinamica protetta e flessibile
+              // Area centrale dinamica protetta e flessibile senza limiti di spazio rigidi
               Expanded(
                 child: Container(
                   width: double.infinity,
