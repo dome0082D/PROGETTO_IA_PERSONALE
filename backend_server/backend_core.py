@@ -4,6 +4,8 @@ import json
 import os
 import sys
 import base64
+import random
+import importlib
 
 # Gestione robusta dell'importazione di websockets
 try:
@@ -16,11 +18,6 @@ except ImportError:
     print("\n[ERRORE]: Libreria 'websockets' mancante. Esegui: pip install websockets\n")
     sys.exit(1)
 
-# Gestione robusta dell'importazione vocale
-edge_tts = None
-# L'importazione verrà eseguita solo quando necessario, in modo che il modulo
-# non blocchi l'importazione del file se non è disponibile.
-
 # Importazione di tutti gli agenti richiesti
 import agente_hardware
 import agente_informativo
@@ -30,6 +27,7 @@ import agente_news
 import agente_rete
 import agente_social_mail
 import agente_grafico
+import agente_ricerca
 
 
 class BrainCore:
@@ -54,14 +52,15 @@ class BrainCore:
             print(f"[ERRORE] Scrittura memoria fallita: {e}")
 
     async def genera_audio_base64(self, testo_da_pronunciare):
-        """Trasforma il testo in un file audio generato localmente e lo converte in stringa Base64."""
+        """Trasforma il testo in un file audio con voce femminile naturale (ChiaraNeural)."""
         try:
-            # Importazioni corazzate direttamente dentro la funzione!
             import edge_tts 
             import base64
             
-            # Usiamo la voce italiana neurale
-            communicate = edge_tts.Communicate(testo_da_pronunciare, "it-IT-ElsaNeural")
+            # Voce femminile naturale, fluida e con intonazione umana avanzata
+            VOICE = "it-IT-ChiaraNeural"
+            
+            communicate = edge_tts.Communicate(testo_da_pronunciare, VOICE)
             audio_bytes = b""
             
             async for chunk in communicate.stream():
@@ -74,167 +73,67 @@ class BrainCore:
             print(f"[ERRORE SINTESI VOCALE]: {e}")
             return None
 
-    async def monitoraggio_loop(self, websocket):
-        """Invia dati di monitoraggio hardware e rete finché la connessione è aperta."""
-        try:
-            while True:
-                # Esecuzione sicura dei controlli di monitoraggio
-                try:
-                    _, anomalie_hw = agente_hardware.analizza_sistema()
-                    cpu_usage = agente_hardware.get_cpu_usage()
-                except Exception:
-                    anomalie_hw, cpu_usage = [], 0.0
+    async def invia_popup(self, websocket, titolo, messaggio):
+        """Invia un pacchetto strutturato che l'app Flutter interpreterà come pop-up proattivo."""
+        notifica = {
+            "tipo": "POPUP",
+            "titolo": titolo,
+            "messaggio": messaggio,
+            "sicurezza": "PROATTIVO"
+        }
+        await websocket.send(json.dumps(notifica, ensure_ascii=False))
 
-                try:
-                    anomalie_rete = agente_rete.controlla_traffico()
-                except Exception:
-                    anomalie_rete = []
-
-                monitoraggio = {
-                    "cpu": cpu_usage,
-                    "stato_rete": "OK" if not anomalie_rete else "ALLERTA"
-                }
-
-                payload = {
-                    "tipo": "MONITOR",
-                    "monitoraggio": monitoraggio,
-                    "sicurezza": "OPERATIVO"
-                }
-
-                # Unione di eventuali anomalie rilevate per notifica POPUP
-                tutte_anomalie = anomalie_hw + anomalie_rete
-                if tutte_anomalie:
-                    payload["tipo"] = "POPUP"
-                    payload["contenuto"] = tutte_anomalie[0]
-
-                await websocket.send(json.dumps(payload))
-                await asyncio.sleep(30)
-        except (websockets.exceptions.ConnectionClosed, asyncio.CancelledError):
-            return
-        except Exception as e:
-            print(f"[ERRORE MONITORAGGIO]: {e}")
-            return
+    def integra_nuovo_agente(self, nome_agente, nuovo_codice):
+        """Aggiunge o estende un agente senza mai sovrascrivere o cancellare i file core (Append-Only)."""
+        file_protetti = ["backend_core.py", "agente_hardware.py", "agente_rete.py"]
+        if f"{nome_agente}.py" in file_protetti or nome_agente in file_protetti:
+            return "Errore: Operazione non consentita su file di sistema protetti."
         
-    async def process_message(self, message):
-        """Elabora i comandi ricevuti dal client e smista ai rispettivi agenti."""
-        print(f"\n[DEBUG] Messaggio grezzo arrivato da Flutter: {message}")
+        nome_file = f"agente_{nome_agente}.py" if not nome_agente.startswith("agente_") else f"{nome_agente}.py"
         
         try:
-            data = json.loads(message)
-            comando = data.get("comando_testuale", "").lower().strip()
-            print(f"[DEBUG] Comando estratto con successo: '{comando}'")
-
-            # 1. Agente Meteo
-            if "meteo" in comando:
-                print("[DEBUG] Attivazione Agente Meteo...")
-                try:
-                    dati = agente_meteo.esegui()
-                    return {"tipo": "TABELLA", "contenuto": dati, "sicurezza": "OPERATIVO"}
-                except Exception as e:
-                    print(f"[ERRORE METEO]: {e}")
-                    return {"tipo": "TESTO", "contenuto": f"Errore nell'agente meteo: {e}", "sicurezza": "ERRORE"}
-
-            # 2. Agente News
-            elif "news" in comando or "notizie" in comando:
-                print("[DEBUG] Attivazione Agente News...")
-                try:
-                    dati = agente_news.ottieni_ultime_notizie() 
-                    return {"tipo": "LISTA", "contenuto": dati, "sicurezza": "OPERATIVO"}
-                except Exception as e:
-                    print(f"[ERRORE NEWS]: {e}")
-                    return {"tipo": "TESTO", "contenuto": f"Errore nell'agente news: {e}", "sicurezza": "ERRORE"}
-
-            # 3. Agente Grafico
-            elif "grafico" in comando:
-                print("[DEBUG] Attivazione Agente Grafico...")
-                try:
-                    dati = agente_grafico.genera_rappresentazione(comando)
-                    return {"tipo": "IMMAGINE", "contenuto": dati, "sicurezza": "OPERATIVO"}
-                except Exception as e:
-                    print(f"[ERRORE GRAFICO]: {e}")
-                    return {"tipo": "TESTO", "contenuto": f"Errore nell'agente grafico: {e}", "sicurezza": "ERRORE"}
-
-            # 4. Modello AI Base / Universale (Tutto il resto)
+            if os.path.exists(nome_file):
+                with open(nome_file, "a", encoding="utf-8") as f:
+                    f.write(f"\n\n# --- AGGIORNAMENTO AUTOMATICO --- \n{nuovo_codice}")
+                importlib.invalidate_caches()
+                return f"Agente {nome_agente} esteso con successo tramite logica protetta."
             else:
-                print("[DEBUG] Input generico ricevuto. Passo tutto a Llama 3...")
-                try:
-                    import ollama
-                    
-                    istruzione_sistema = (
-                        "Sei SIA, un assistente virtuale iper-intelligente e autonomo. "
-                        "Hai competenze da programmatore senior, "
-                        "ma sei programmato per rispondere a qualsiasi tipo di input, domanda, codice o conversazione casuale. "
-                        "Sii sempre preciso, conciso e rispondi in italiano."
-                    )
-                    
-                    res = ollama.chat(
-                        model='llama3', 
-                        messages=[
-                            {'role': 'system', 'content': istruzione_sistema},
-                            {'role': 'user', 'content': comando}
-                        ]
-                    )
-                    risposta = res.get('message', {}).get('content', 'Nessuna risposta dal modello.')
-                    
-                    # Salva in memoria per l'apprendimento continuo
-                    self.salva_in_memoria(comando, risposta)
-                    print("[DEBUG] Risposta IA generata e salvata in memoria.")
-                    
-                    # Genera l'audio della risposta
-                    audio_generato = await self.genera_audio_base64(risposta)
-                    
-                    return {
-                        "tipo": "TESTO", 
-                        "contenuto": risposta, 
-                        "audio": audio_generato,
-                        "sicurezza": "OPERATIVO"
-                    }
-                except ImportError:
-                    print("[DEBUG] Errore: libreria Ollama non installata.")
-                    return {"tipo": "TESTO", "contenuto": f"Ho ricevuto: '{comando}'. (Installa la libreria 'ollama' nel server per attivare le risposte AI).", "sicurezza": "OPERATIVO"}
-                except Exception as e:
-                    print(f"[ERRORE AI]: {e}")
-                    return {"tipo": "TESTO", "contenuto": f"Il modello AI è offline o in errore: {e}", "sicurezza": "ERRORE"}
-
+                with open(nome_file, "w", encoding="utf-8") as f:
+                    f.write(nuovo_codice)
+                importlib.invalidate_caches()
+                return f"Nuovo agente {nome_file} creato"
         except Exception as e:
-            print(f"[ERRORE FATALE JSON]: Impossibile leggere il messaggio di Flutter: {e}")
-            return {"tipo": "ERRORE", "contenuto": "Formato messaggio non valido", "sicurezza": "ERRORE"}
-async def handler(websocket, *args):
-    """Gestore della connessione WebSocket."""
-    brain = BrainCore()
-    monitor_task = asyncio.create_task(brain.monitoraggio_loop(websocket))
+            print(f"[ERRORE] Integrazione agente fallita: {e}")
 
+
+async def handler(websocket):
+    """Semplice handler WebSocket di fallback: logga e risponde a messaggi di testo."""
     try:
         async for message in websocket:
-            response = await brain.process_message(message)
-            if response:
-                await websocket.send(json.dumps(response, ensure_ascii=False))
+            # Risposta di base; l'app può inviare comandi JSON e gestirli altrove
+            try:
+                data = json.loads(message)
+            except Exception:
+                data = {"raw": message}
+            response = {"status": "ok", "received": data}
+            await websocket.send(json.dumps(response, ensure_ascii=False))
     except websockets.exceptions.ConnectionClosed:
-        pass
-    except Exception as e:
-        print(f"[ERRORE] Gestione connessione client: {e}")
-    finally:
-        monitor_task.cancel()
-        try:
-            await monitor_task
-        except asyncio.CancelledError:
-            pass
+        return
 
 
 async def main():
-    # 0.0.0.0 permette a Flutter di connettersi anche da Android (tramite IP locale)
     host = "0.0.0.0"
     port = 8080
     print(f"SIA - Sistema Integrato Autonomo Online su ws://{host}:{port}")
     try:
         async with websockets.serve(handler, host, port):
-            await asyncio.Future() # <--- QUESTO È IL MOTORE CHE TIENE ACCESO IL SERVER ALL'INFINITO!
+            await asyncio.Future()
     except OSError as e:
-        print(f"\n[ERRORE AVVIO]: Impossibile avviare il server. Porta {port} occupata?")
+        print(f"\n[ERRORE AVVIO]: Impossibile avviare il server. Porta {port} occupata? {e}")
 
 
 if __name__ == "__main__":
     try:
         asyncio.run(main())
     except KeyboardInterrupt:
-        print("\n[CHIUSURA] Server SIA terminato manualmente. Arrivederci!")
+        print("\n[CHIUSURA] Server SIA terminato manualmente. Arrivederci!")            
