@@ -11,7 +11,7 @@ import importlib
 try:
     import websockets
 except SyntaxError as e:
-    print(f"\n[ERRORE DI SINTASSI LIBRERIA]: La versione di 'websockets' installata non è pienamente compatibile con Python {sys.version.split()[0]}.")
+    print(f"\n[ERRORE DI SINTASSI LIBRERIA]: La versione di 'websockets' installata non è pienamente compatibile.")
     print("Esegui nel terminale: pip install --upgrade --force-reinstall websockets\n")
     sys.exit(1)
 except ImportError:
@@ -19,16 +19,18 @@ except ImportError:
     sys.exit(1)
 
 # Importazione di tutti gli agenti richiesti
-import agente_hardware
-import agente_informativo
-import agente_filosofico
-import agente_meteo
-import agente_news
-import agente_rete
-import agente_social_mail
-import agente_grafico
-import agente_ricerca
-
+try:
+    import agente_hardware
+    import agente_informativo
+    import agente_filosofico
+    import agente_meteo
+    import agente_news
+    import agente_rete
+    import agente_social_mail
+    import agente_grafico
+    import agente_ricerca
+except ImportError as e:
+    print(f"[ATTENZIONE] Un agente non è stato trovato: {e}. Il sistema si avvierà comunque.")
 
 class BrainCore:
     def __init__(self):
@@ -52,23 +54,34 @@ class BrainCore:
             print(f"[ERRORE] Scrittura memoria fallita: {e}")
 
     async def genera_audio_base64(self, testo_da_pronunciare):
-        """Trasforma il testo in un file audio con voce femminile naturale (ChiaraNeural)."""
+        """Trasforma il testo in un file audio pulito con voce ChiaraNeural, senza markdown."""
         try:
             import edge_tts 
-            import base64
-            
-            # Voce femminile naturale, fluida e con intonazione umana avanzata
             VOICE = "it-IT-ChiaraNeural"
             
-            communicate = edge_tts.Communicate(testo_da_pronunciare, VOICE)
-            audio_bytes = b""
+            # Pulizia profonda dai caratteri di formattazione Markdown che bloccano la sintesi vocale
+            testo_pulito = (
+                testo_da_pronunciare
+                .replace("**", "")
+                .replace("*", "")
+                .replace("#", "")
+                .replace("`", "")
+                .strip()
+            )
             
+            if not testo_pulito:
+                print("[DEBUG] Testo vuoto dopo la pulizia. Nessun audio generato.")
+                return None
+                
+            communicate = edge_tts.Communicate(testo_pulito, VOICE)
+            audio_bytes = b""
             async for chunk in communicate.stream():
                 if chunk["type"] == "audio":
                     audio_bytes += chunk["data"]
-            
-            audio_base64 = base64.b64encode(audio_bytes).decode('utf-8')
-            return audio_base64
+            return base64.b64encode(audio_bytes).decode('utf-8')
+        except ImportError:
+            print("[ATTENZIONE] Modulo 'edge_tts' mancante. Audio non generato.")
+            return None
         except Exception as e:
             print(f"[ERRORE SINTESI VOCALE]: {e}")
             return None
@@ -81,7 +94,10 @@ class BrainCore:
             "messaggio": messaggio,
             "sicurezza": "PROATTIVO"
         }
-        await websocket.send(json.dumps(notifica, ensure_ascii=False))
+        try:
+            await websocket.send(json.dumps(notifica, ensure_ascii=False))
+        except Exception as e:
+            print(f"[ERRORE INVIO POPUP]: {e}")
 
     def integra_nuovo_agente(self, nome_agente, nuovo_codice):
         """Aggiunge o estende un agente senza mai sovrascrivere o cancellare i file core (Append-Only)."""
@@ -104,21 +120,141 @@ class BrainCore:
                 return f"Nuovo agente {nome_file} creato"
         except Exception as e:
             print(f"[ERRORE] Integrazione agente fallita: {e}")
+            return f"Errore: {e}"
+
+    async def process_message(self, message):
+        """Elabora il messaggio in ingresso (testo o file) e smista il comando."""
+        print(f"\n[DEBUG] Messaggio in arrivo...")
+        try:
+            data = json.loads(message)
+            comando = data.get("comando_testuale", "").lower().strip()
+            
+            # Predisposizione per la ricezione e l'apprendimento dai file (es. orari di lavoro)
+            if "file_base64" in data or "immagine" in data:
+                print("[DEBUG] Ricevuto un file da analizzare.")
+                return {"tipo": "TESTO", "contenuto": "File ricevuto correttamente. Modulo di visione e assimilazione in fase di attivazione.", "sicurezza": "OPERATIVO"}
+            
+            print(f"[DEBUG] Comando estratto: '{comando}'")
+
+            if "meteo" in comando:
+                dati = agente_meteo.esegui() if 'agente_meteo' in sys.modules and hasattr(sys.modules['agente_meteo'], 'esegui') else "Modulo Meteo offline."
+                return {"tipo": "TABELLA", "contenuto": dati, "sicurezza": "OPERATIVO"}
+            elif "news" in comando or "notizie" in comando:
+                dati = agente_news.ottieni_ultime_notizie() if 'agente_news' in sys.modules and hasattr(sys.modules['agente_news'], 'ottieni_ultime_notizie') else "Modulo News offline."
+                return {"tipo": "LISTA", "contenuto": dati, "sicurezza": "OPERATIVO"}
+            elif "grafico" in comando:
+                dati = agente_grafico.genera_rappresentazione(comando) if 'agente_grafico' in sys.modules and hasattr(sys.modules['agente_grafico'], 'genera_rappresentazione') else "Modulo Grafico offline."
+                return {"tipo": "IMMAGINE", "contenuto": dati, "sicurezza": "OPERATIVO"}
+            elif "rete" in comando or "traffico" in comando:
+                dati = agente_rete.controlla_traffico() if 'agente_rete' in sys.modules and hasattr(sys.modules['agente_rete'], 'controlla_traffico') else "Modulo Rete offline."
+                return {"tipo": "TESTO", "contenuto": f"Analisi traffico: {dati}", "sicurezza": "OPERATIVO"}
+            else:
+                try:
+                    import ollama
+                    istruzione_sistema = (
+                        "Sei SIA, un assistente virtuale iper-intelligente e autonomo. "
+                        "Rispondi in modo colloquiale, preciso, conciso e in italiano."
+                    )
+                    
+                    # Esecuzione in thread separato asincrono per evitare freeze di CPU e monitoraggio
+                    res = await asyncio.to_thread(
+                        ollama.chat,
+                        model='llama3', 
+                        messages=[
+                            {'role': 'system', 'content': istruzione_sistema},
+                            {'role': 'user', 'content': comando}
+                        ]
+                    )
+                    
+                    risposta = res.get('message', {}).get('content', 'Nessuna risposta dal modello.')
+                    self.salva_in_memoria(comando, risposta)
+                    audio_generato = await self.genera_audio_base64(risposta)
+                    
+                    return {
+                        "tipo": "TESTO", 
+                        "contenuto": risposta, 
+                        "audio": audio_generato,
+                        "sicurezza": "OPERATIVO"
+                    }
+                except ImportError:
+                    return {"tipo": "TESTO", "contenuto": f"Ricevuto: '{comando}'. (Installa 'ollama').", "sicurezza": "OPERATIVO"}
+                except Exception as e:
+                    return {"tipo": "TESTO", "contenuto": f"AI offline: {e}", "sicurezza": "ERRORE"}
+        except Exception as e:
+            return {"tipo": "ERRORE", "contenuto": f"Formato dati non valido: {e}", "sicurezza": "ERRORE"}
+
+    async def monitoraggio_loop(self, websocket):
+        """Ciclo vitale in background di SIA per monitoraggio e apprendimento continuo."""
+        try:
+            while True:
+                cpu_usage = 0.0
+                anomalie_rete = []
+                
+                try:
+                    if 'agente_hardware' in sys.modules and hasattr(sys.modules['agente_hardware'], 'get_cpu_usage'):
+                        cpu_usage = sys.modules['agente_hardware'].get_cpu_usage()
+                except Exception:
+                    pass
+
+                monitoraggio = {
+                    "cpu": cpu_usage,
+                    "stato_rete": "OK" if not anomalie_rete else "ALLERTA"
+                }
+
+                payload = {
+                    "tipo": "MONITOR",
+                    "monitoraggio": monitoraggio,
+                    "sicurezza": "OPERATIVO"
+                }
+
+                try:
+                    await websocket.send(json.dumps(payload, ensure_ascii=False))
+                except websockets.exceptions.ConnectionClosed:
+                    break
+
+                # Piccola possibilità di fare ricerca autonoma ogni 30 secondi
+                if random.random() < 0.05 and 'agente_ricerca' in sys.modules:
+                    try:
+                        if hasattr(sys.modules['agente_ricerca'], 'ricerca_autonoma'):
+                            risultati, tema = sys.modules['agente_ricerca'].ricerca_autonoma()
+                            if risultati:
+                                corpo_conoscenza = risultati[0].get('body', 'Dettagli appresi.')
+                                if hasattr(sys.modules['agente_ricerca'], 'registra_nuova_conoscenza'):
+                                    sys.modules['agente_ricerca'].registra_nuova_conoscenza(tema, corpo_conoscenza)
+                                msg = f"Ho studiato in autonomia: {tema}"
+                                await self.invia_popup(websocket, "Auto-Apprendimento", msg)
+                    except Exception as re:
+                        print(f"[ERRORE APPRENDIMENTO AUTOMATICO]: {re}")
+
+                await asyncio.sleep(30)
+        except asyncio.CancelledError:
+            pass
+        except Exception as e:
+            print(f"[ERRORE MONITORAGGIO LOOP]: {e}")
 
 
 async def handler(websocket):
-    """Semplice handler WebSocket di fallback: logga e risponde a messaggi di testo."""
+    """Gestore principale della connessione WebSocket."""
+    print("[DEBUG] Connessione in arrivo dal client...")
+    brain = BrainCore()
+    monitor_task = asyncio.create_task(brain.monitoraggio_loop(websocket))
+
     try:
         async for message in websocket:
-            # Risposta di base; l'app può inviare comandi JSON e gestirli altrove
-            try:
-                data = json.loads(message)
-            except Exception:
-                data = {"raw": message}
-            response = {"status": "ok", "received": data}
-            await websocket.send(json.dumps(response, ensure_ascii=False))
+            print(f"[DEBUG] Interazione ricevuta.")
+            response = await brain.process_message(message)
+            if response:
+                await websocket.send(json.dumps(response, ensure_ascii=False))
     except websockets.exceptions.ConnectionClosed:
-        return
+        print("[DEBUG] Client disconnesso.")
+    except Exception as e:
+        print(f"[ERRORE] Handler principale: {e}")
+    finally:
+        monitor_task.cancel()
+        try:
+            await monitor_task
+        except asyncio.CancelledError:
+            pass
 
 
 async def main():
@@ -127,13 +263,14 @@ async def main():
     print(f"SIA - Sistema Integrato Autonomo Online su ws://{host}:{port}")
     try:
         async with websockets.serve(handler, host, port):
+            # Questo comando mantiene in vita il server indefinitamente
             await asyncio.Future()
     except OSError as e:
-        print(f"\n[ERRORE AVVIO]: Impossibile avviare il server. Porta {port} occupata? {e}")
+        print(f"\n[ERRORE AVVIO]: Porta {port} occupata o irraggiungibile. {e}")
 
 
 if __name__ == "__main__":
     try:
         asyncio.run(main())
     except KeyboardInterrupt:
-        print("\n[CHIUSURA] Server SIA terminato manualmente. Arrivederci!")            
+        print("\n[CHIUSURA] SIA terminato manualmente. Arrivederci!")

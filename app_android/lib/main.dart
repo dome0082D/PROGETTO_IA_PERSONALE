@@ -27,14 +27,49 @@ class _MonitorPageState extends State<MonitorPage> {
   late WebSocketChannel channel;
   final FlutterTts flutterTts = FlutterTts();
   final TextEditingController _inputController = TextEditingController();
-  String ultimaLettura = ""; // Variabile rinominata per chiarezza
+  
+  // VARIABILI DI STATO PERSISTENTI
+  String sicurezza = "OPERATIVO";
+  double cpuValue = 0.0;
+  String ultimaLettura = ""; 
+  Map<String, dynamic> ultimiDatiVisuali = {
+    "tipo": "TESTO", 
+    "contenuto": "SIA Connessa. In attesa di comandi..."
+  };
+  
+  bool haErroreConnessione = false;
 
   @override
   void initState() {
     super.initState();
-    // Il server è su ws://127.0.0.1:8080
-    channel = WebSocketChannel.connect(Uri.parse('ws://127.0.0.1:8080'));
+    initWebSocket();
     initTts();
+  }
+
+  void initWebSocket() {
+    try {
+      // Connessione al server SIA
+      channel = WebSocketChannel.connect(Uri.parse('ws://127.0.0.1:8080'));
+      
+      // Ascolto continuo del flusso dati in background
+      channel.stream.listen(
+        (message) {
+          elaboraMessaggioInArrivo(message);
+        },
+        onError: (error) {
+          setState(() {
+            haErroreConnessione = true;
+          });
+        },
+        onDone: () {
+          debugPrint("Connessione WebSocket chiusa.");
+        },
+      );
+    } catch (e) {
+      setState(() {
+        haErroreConnessione = true;
+      });
+    }
   }
 
   void initTts() async {
@@ -42,100 +77,254 @@ class _MonitorPageState extends State<MonitorPage> {
     await flutterTts.setSpeechRate(0.5);
   }
 
-  // LOGICA CORRETTA PER LA GESTIONE TTS
+  void elaboraMessaggioInArrivo(dynamic message) {
+    try {
+      Map<String, dynamic> dati = jsonDecode(message);
+      
+      setState(() {
+        // 1. Aggiorna sempre lo stato globale della sicurezza se presente
+        if (dati.containsKey('sicurezza')) {
+          sicurezza = dati['sicurezza']?.toString() ?? 'OPERATIVO';
+        }
+        
+        // 2. Se è un pacchetto di monitoraggio aggiorna solo i dati hardware senza cancellare lo schermo
+        if (dati.containsKey('monitoraggio')) {
+          final mon = dati['monitoraggio'];
+          if (mon is Map && mon.containsKey('cpu')) {
+            cpuValue = (mon['cpu'] ?? 0.0).toDouble();
+          }
+        }
+        
+        // 3. Se contiene un contenuto visivo reale (diverso da MONITOR), aggiorna la visualizzazione centrale
+        String? tipo = dati['tipo'];
+        if (tipo != null && tipo != 'MONITOR') {
+          ultimiDatiVisuali = dati;
+          gestisciTts(dati); // Riproduzione vocale sicura all'arrivo del messaggio
+        }
+      });
+    } catch (e) {
+      debugPrint("Errore decodifica JSON pacchetto: $e");
+    }
+  }
+
   void gestisciTts(Map<String, dynamic> dati) {
-    if (dati.containsKey('tipo') && dati['tipo'] == 'TESTO' && dati.containsKey('contenuto')) {
+    if (dati['tipo'] == 'TESTO' && dati.containsKey('contenuto')) {
       String contenuto = dati['contenuto'].toString();
-      if (contenuto != ultimaLettura) {
-        ultimaLettura = contenuto;
+      if (contenido != ultimaLettura) {
+        ultimaLettura = contenido;
         flutterTts.speak(contenuto);
       }
     }
   }
 
   Widget _buildVisualContent(Map<String, dynamic> dati) {
-    String tipo = dati['tipo'] ?? 'MONITOR';
-    // Se è un monitoraggio, non mostriamo nulla o mostriamo un widget dedicato
-    if (tipo == 'MONITOR') return const SizedBox.shrink();
+    String tipo = dati['tipo'] ?? 'TESTO';
 
     switch (tipo) {
       case 'TABELLA':
-        return SingleChildScrollView(
-          scrollDirection: Axis.horizontal,
-          child: DataTable(
-            columns: const [DataColumn(label: Text('Info')), DataColumn(label: Text('Valore'))],
-            rows: (dati['contenuto'] as List).map((r) => DataRow(cells: [
-              DataCell(Text(r['chiave'].toString())),
-              DataCell(Text(r['valore'].toString()))
-            ])).toList(),
+        var contenuto = dati['contenuto'];
+        // PROTEZIONE CRASH: se non è una lista, mostra il testo di fallback dell'agente senza crashare
+        if (contenuto is! List) {
+          return SizedBox.expand(
+            child: SingleChildScrollView(
+              physics: const BouncingScrollPhysics(),
+              padding: const EdgeInsets.all(16.0),
+              child: SelectableText(contenuto?.toString() ?? "Nessun dato tabella disponibile."),
+            ),
+          );
+        }
+
+        return SizedBox.expand(
+          child: SingleChildScrollView(
+            scrollDirection: Axis.vertical,
+            physics: const BouncingScrollPhysics(),
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              physics: const BouncingScrollPhysics(),
+              child: DataTable(
+                columns: const [DataColumn(label: Text('Info')), DataColumn(label: Text('Valore'))],
+                rows: contenuto.map((r) {
+                  String chiave = "";
+                  String valore = "";
+                  if (r is Map) {
+                    chiave = r['chiave']?.toString() ?? '';
+                    valore = r['valore']?.toString() ?? '';
+                  } else {
+                    chiave = "Dato";
+                    valore = r.toString();
+                  }
+                  return DataRow(cells: [
+                    DataCell(SelectableText(chiave)),
+                    DataCell(SelectableText(valore))
+                  ]);
+                }).toList(),
+              ),
+            ),
           ),
         );
+        
       case 'LISTA':
-        return ListView.builder(
-          shrinkWrap: true,
-          itemCount: (dati['contenuto'] as List).length,
-          itemBuilder: (context, index) => ListTile(
-            title: Text(dati['contenuto'][index]['titolo'] ?? ''),
-            leading: const Icon(Icons.newspaper),
+        var contenuto = dati['contenuto'];
+        if (contenuto is! List) {
+          return SizedBox.expand(
+            child: SingleChildScrollView(
+              physics: const BouncingScrollPhysics(),
+              padding: const EdgeInsets.all(16.0),
+              child: SelectableText(contenuto?.toString() ?? "Nessun elemento in lista."),
+            ),
+          );
+        }
+
+        return SizedBox.expand(
+          child: ListView.builder(
+            physics: const BouncingScrollPhysics(),
+            itemCount: contenuto.length,
+            itemBuilder: (context, index) {
+              final item = contenuto[index];
+              String titolo = "";
+              if (item is Map) {
+                titolo = item['titolo']?.toString() ?? item['contenuto']?.toString() ?? '';
+              } else {
+                titolo = item.toString();
+              }
+              return ListTile(
+                title: SelectableText(titolo),
+                leading: const Icon(Icons.newspaper),
+              );
+            },
           ),
         );
+
+      case 'POPUP':
+        String titoloPopup = dati['titolo']?.toString() ?? "Notifica di Sistema";
+        String messaggioPopup = dati['messaggio']?.toString() ?? dati['contenuto']?.toString() ?? "";
+        return SizedBox.expand(
+          child: SingleChildScrollView(
+            physics: const BouncingScrollPhysics(),
+            padding: const EdgeInsets.all(20.0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    const Icon(Icons.warning_amber_rounded, color: Colors.orangeAccent),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        titoloPopup, 
+                        style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.orangeAccent),
+                        softWrap: true,
+                      ),
+                    ),
+                  ],
+                ),
+                const Divider(color: Colors.orangeAccent),
+                const SizedBox(height: 10),
+                SelectableText(messaggioPopup, style: const TextStyle(fontSize: 16)),
+              ],
+            ),
+          ),
+        );
+        
       default:
-        return Padding(
-          padding: const EdgeInsets.all(16.0),
-          child: Text(dati['contenuto']?.toString() ?? ""),
+        return SizedBox.expand(
+          child: SingleChildScrollView(
+            scrollDirection: Axis.vertical,
+            physics: const BouncingScrollPhysics(),
+            padding: const EdgeInsets.all(16.0),
+            child: SelectableText(
+              dati['contenuto']?.toString() ?? "",
+              style: const TextStyle(fontSize: 16),
+            ),
+          ),
         );
     }
   }
 
   @override
+  void dispose() {
+    // Chiusura pulita delle risorse all'uscita per evitare memory leak
+    channel.sink.close();
+    _inputController.dispose();
+    flutterTts.stop();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      body: StreamBuilder(
-        stream: channel.stream,
-        builder: (context, snapshot) {
-          if (snapshot.hasError) return const Center(child: Text("Errore connessione"));
-          if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
-          
-          Map<String, dynamic> dati;
-          try {
-            dati = jsonDecode(snapshot.data);
-            gestisciTts(dati); // Chiamata separata sicura
-          } catch (e) {
-            return const Center(child: Text("Errore formattazione dati"));
-          }
-
-          final mon = dati.containsKey('monitoraggio') ? dati['monitoraggio'] : {'cpu': 0.0};
-          final double cpuValue = (mon['cpu'] ?? 0.0).toDouble();
-
-          return Padding(
-            padding: const EdgeInsets.all(20),
-            child: Column(
-              children: [
-                const SizedBox(height: 50),
-                Text("SICUREZZA: ${dati['sicurezza'] ?? 'NORMALE'}", style: const TextStyle(fontSize: 24)),
-                Text("${cpuValue.toStringAsFixed(1)}% CPU", style: const TextStyle(fontSize: 40)),
-                Expanded(child: _buildVisualContent(dati)),
-                TextField(
-                  controller: _inputController,
-                  decoration: InputDecoration(
-                    hintText: 'Invia comando',
-                    suffixIcon: IconButton(
-                      icon: const Icon(Icons.send),
-                      onPressed: () {
-                        channel.sink.add(jsonEncode({'comando_testuale': _inputController.text}));
-                        _inputController.clear();
-                      },
-                    ),
-                  ),
-                  onSubmitted: (value) {
-                    channel.sink.add(jsonEncode({'comando_testuale': value}));
-                    _inputController.clear();
-                  },
-                ),
-              ],
+    if (haErroreConnessione) {
+      return const Scaffold(
+        body: Center(
+          child: Padding(
+            padding: EdgeInsets.all(20.0),
+            child: Text(
+              "Errore di connessione al server SIA.\nVerifica che il backend Python sia attivo.", 
+              textAlign: TextAlign.center, 
+              style: TextStyle(color: Colors.redAccent, fontSize: 16)
             ),
-          );
-        },
+          ),
+        ),
+      );
+    }
+
+    return Scaffold(
+      resizeToAvoidBottomInset: true, 
+      body: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 10.0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              const SizedBox(height: 10),
+              Text(
+                "SICUREZZA: $sicurezza", 
+                style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+                textAlign: TextAlign.center,
+              ),
+              Text(
+                "${cpuValue.toStringAsFixed(1)}% CPU", 
+                style: const TextStyle(fontSize: 40, fontWeight: FontWeight.w500),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 15),
+              // Area centrale dinamica protetta e flessibile
+              Expanded(
+                child: Container(
+                  width: double.infinity,
+                  decoration: BoxDecoration(
+                    color: Colors.black12,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: _buildVisualContent(ultimiDatiVisuali),
+                ),
+              ),
+              const SizedBox(height: 15),
+              // Campo di input per l'invio dei comandi testuali
+              TextField(
+                controller: _inputController,
+                decoration: InputDecoration(
+                  hintText: 'Invia comando',
+                  border: const OutlineInputBorder(),
+                  suffixIcon: IconButton(
+                    icon: const Icon(Icons.send),
+                    onPressed: () {
+                      if (_inputController.text.trim().isNotEmpty) {
+                        channel.sink.add(jsonEncode({'comando_testuale': _inputController.text.trim()}));
+                        _inputController.clear();
+                      }
+                    },
+                  ),
+                ),
+                onSubmitted: (value) {
+                  if (value.trim().isNotEmpty) {
+                    channel.sink.add(jsonEncode({'comando_testuale': value.trim()}));
+                    _inputController.clear();
+                  }
+                },
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
