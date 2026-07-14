@@ -1,10 +1,36 @@
 # server.py
 import asyncio
 import json
+import os
 import sys
 
+# Assicura che il percorso del progetto sia disponibile per l'importazione
+project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if project_root not in sys.path:
+    sys.path.insert(0, project_root)
+
 # Importa il cervello dall'Area Core
-from Area_Core.brain_logic import BrainCore
+try:
+    import Area_Core.brain_logic as brain_logic_module
+except ImportError:
+    import importlib.util
+
+    brain_logic_candidates = [
+        os.path.join(project_root, "Area_Core", "brain_logic.py"),
+        os.path.join(os.path.dirname(os.path.abspath(__file__)), "Area_Core", "brain_logic.py"),
+    ]
+    brain_logic_path = next((path for path in brain_logic_candidates if os.path.exists(path)), None)
+
+    if brain_logic_path is None:
+        raise
+
+    spec = importlib.util.spec_from_file_location("Area_Core.brain_logic", brain_logic_path)
+    if spec is None or spec.loader is None:
+        raise ImportError("Impossibile caricare il modulo Area_Core.brain_logic")
+
+    brain_logic_module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = brain_logic_module
+    spec.loader.exec_module(brain_logic_module)
 
 print("IL FILE È PARTITO!")
 
@@ -24,7 +50,7 @@ async def handler(websocket):
     print("[DEBUG] Connessione in arrivo dal client...")
     
     # Inizializza il cervello per questa sessione
-    brain = BrainCore()
+    brain = Area_Core.brain_logic.BrainCore()
     monitor_task = asyncio.create_task(brain.monitoraggio_loop(websocket))
 
     try:
