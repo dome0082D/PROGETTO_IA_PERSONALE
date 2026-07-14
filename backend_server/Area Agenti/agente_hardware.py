@@ -39,3 +39,21 @@ def esegui_pulizia():
         return "Pulizia file temporanei completata con successo."
     except Exception as e:
         return f"Errore durante la pulizia: {e}"
+
+
+# --- INTERFACCIA PER IL NUOVO LOADER MODULARE ---
+def esegui(comando):
+    """
+    Funzione standard di interfaccia per l'architettura modulare di SIA.
+    Mantiene intatta la logica originale senza romperne i ritorni.
+    """
+    cmd = comando.lower()
+    
+    if "pulisci" in cmd or "pulizia" in cmd:
+        return esegui_pulizia()
+        
+    # Altrimenti esegue l'analisi del sistema standard (ritorna report + eventuali avvisi)
+    report, avvisi = analizza_sistema()
+    if avvisi:
+        return f"{report} ATTENZIONE: " + " | ".join(avvisi)
+    return report

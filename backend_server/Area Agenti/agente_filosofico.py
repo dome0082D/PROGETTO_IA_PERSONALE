@@ -15,3 +15,11 @@ def rifletti_sul_mondo(notizie_recenti):
     
     res = ollama.chat(model='llama3', messages=[{'role': 'user', 'content': prompt}])
     return res['message']['content']
+
+
+def esegui(comando, notizie_recenti="Nessuna notizia recente fornita."):
+    """
+    Funzione standard di interfaccia per l'architettura modulare di SIA.
+    """
+    # Se il comando contiene già informazioni o se passiamo le notizie direttamente
+    return rifletti_sul_mondo(notizie_recenti)
