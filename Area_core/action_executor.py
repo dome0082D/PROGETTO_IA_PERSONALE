@@ -3,7 +3,7 @@ import json
 import os
 import base64
 import importlib
-import re # Aggiunto per pulizia testo più avanzata
+import re
 
 class ActionExecutor:
     def __init__(self):
@@ -36,50 +36,73 @@ class ActionExecutor:
         except Exception as e:
             print(f"[ERRORE] Scrittura memoria fallita: {e}")
 
+    def carica_memoria(self):
+        """Legge l'intero storico dal file JSON per ripristinare la conversazione all'avvio."""
+        if not os.path.exists(self.memory_file):
+            return []
+        try:
+            with open(self.memory_file, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                return data if isinstance(data, list) else []
+        except Exception as e:
+            print(f"[ERRORE] Caricamento memoria fallito: {e}")
+            return []
+
+    def get_history_for_llm(self, limit=10):
+        """Formatta la memoria per l'IA. Prende gli ultimi 'limit' messaggi per non appesantire la CPU."""
+        history = []
+        if os.path.exists(self.memory_file):
+            try:
+                with open(self.memory_file, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                    # Prendiamo gli ultimi N messaggi
+                    recent_data = data[-limit:] if isinstance(data, list) else []
+                    
+                    for entry in recent_data:
+                        history.append({'role': 'user', 'content': entry.get('input', '')})
+                        history.append({'role': 'assistant', 'content': entry.get('risposta', '')})
+            except Exception as e:
+                print(f"[ERRORE] Lettura memoria per LLM: {e}")
+        return history
+
     async def genera_audio_base64(self, testo_da_pronunciare):
-        """Trasforma il testo in un file audio pulito con voce neurale ad alta qualità."""
+        """Trasforma il testo in audio neurale. Include controlli di integrità per evitare suoni metallici."""
         if not testo_da_pronunciare:
-            print("[DEBUG] Testo vuoto in ingresso. Nessun audio generato.")
             return None
 
         try:
-            import edge_tts 
+            import edge_tts
             
-            # ElsaNeural è considerata una delle voci italiane più naturali e fluide in assoluto.
-            # In alternativa, puoi rimettere "it-IT-ChiaraNeural"
-            VOICE = "it-IT-ElsaNeural" 
-            
-            # Pulizia avanzata della formattazione
-            testo_pulito = (
-                testo_da_pronunciare
-                .replace("**", "")
-                .replace("*", "")
-                .replace("#", "")
-                .replace("`", "")
-            )
-            
-            # Rimuove le note di pronuncia tra parentesi (es: "(pronuncia "see-ah")")
-            # che l'intelligenza artificiale tenderebbe a leggere letteralmente, sembrando robotica.
-            testo_pulito = re.sub(r'\(pronuncia.*?\)', '', testo_pulito, flags=re.IGNORECASE)
-            
+            # Pulizia profonda del testo per evitare errori del motore TTS
+            # 1. Rimuove markdown
+            testo_pulito = re.sub(r'[\*\#\`]', '', testo_da_pronunciare)
+            # 2. Rimuove parentesi e contenuti in pronuncia fonetica
+            testo_pulito = re.sub(r'\(.*?\)', '', testo_pulito)
+            # 3. Rimuove punteggiatura eccessiva che causa glitch
+            testo_pulito = re.sub(r'[^\w\s\.\,\!\?]', '', testo_pulito)
             testo_pulito = testo_pulito.strip()
-            
+
             if not testo_pulito:
                 return None
-                
-            # Il parametro rate="+15%" velocizza la parlata rendendola molto più umana e meno cantilenante.
-            communicate = edge_tts.Communicate(testo_pulito, VOICE, rate="+15%")
+            
+            VOICE = "it-IT-ElsaNeural"
+            communicate = edge_tts.Communicate(testo_pulito, VOICE, rate="+10%")
+            
             audio_bytes = b""
+            # Raccolta stream audio
             async for chunk in communicate.stream():
                 if chunk["type"] == "audio":
                     audio_bytes += chunk["data"]
             
-            print("[DEBUG] Audio neurale generato con successo tramite edge-tts.")
+            # CONTROLLO INTEGRITÀ: Se non abbiamo ricevuto nulla, non inviare audio corrotto
+            if len(audio_bytes) < 100: # Soglia minima per considerare l'audio valido
+                print("[ERRORE SINTESI VOCALE]: Dati audio troppo brevi o assenti.")
+                return None
+            
             return base64.b64encode(audio_bytes).decode('utf-8')
             
         except ImportError:
-            print("[ERRORE CRITICO] Modulo 'edge_tts' mancante. Python non può generare l'audio e l'app usa la voce robotica di riserva!")
-            print("-> RISOLVI DIGITANDO NEL TERMINALE: pip install edge-tts")
+            print("[ERRORE CRITICO] Libreria 'edge_tts' non trovata.")
             return None
         except Exception as e:
             print(f"[ERRORE SINTESI VOCALE]: {e}")
