@@ -37,7 +37,7 @@ class ActionExecutor:
             print(f"[ERRORE] Scrittura memoria fallita: {e}")
 
     def carica_memoria(self):
-        """Legge l'intero storico dal file JSON per ripristinare la conversazione all'avvio."""
+        """Legge l'intero storico dal file JSON. Usata all'avvio per ricaricare tutta la conversazione visiva."""
         if not os.path.exists(self.memory_file):
             return []
         try:
@@ -48,14 +48,16 @@ class ActionExecutor:
             print(f"[ERRORE] Caricamento memoria fallito: {e}")
             return []
 
-    def get_history_for_llm(self, limit=10):
-        """Formatta la memoria per l'IA. Prende gli ultimi 'limit' messaggi per non appesantire la CPU."""
+    def get_history_for_llm(self, limit=40):
+        """
+        Formatta la memoria per l'IA. 
+        Prende gli ultimi 40 messaggi per garantire una memoria solida senza sovraccaricare la CPU.
+        """
         history = []
         if os.path.exists(self.memory_file):
             try:
                 with open(self.memory_file, "r", encoding="utf-8") as f:
                     data = json.load(f)
-                    # Prendiamo gli ultimi N messaggi
                     recent_data = data[-limit:] if isinstance(data, list) else []
                     
                     for entry in recent_data:
@@ -66,27 +68,25 @@ class ActionExecutor:
         return history
 
     async def genera_audio_base64(self, testo_da_pronunciare):
-        """Trasforma il testo in audio neurale. Include controlli di integrità per evitare suoni metallici."""
+        """Trasforma il testo in audio neurale. Nessun parametro 'rate' per evitare l'errore del server Microsoft."""
         if not testo_da_pronunciare:
             return None
 
         try:
             import edge_tts
             
-            # Pulizia profonda del testo per evitare errori del motore TTS
-            # 1. Rimuove markdown
+            # Pulizia profonda del testo per evitare errori del motore TTS (suoni metallici)
             testo_pulito = re.sub(r'[\*\#\`]', '', testo_da_pronunciare)
-            # 2. Rimuove parentesi e contenuti in pronuncia fonetica
             testo_pulito = re.sub(r'\(.*?\)', '', testo_pulito)
-            # 3. Rimuove punteggiatura eccessiva che causa glitch
             testo_pulito = re.sub(r'[^\w\s\.\,\!\?]', '', testo_pulito)
             testo_pulito = testo_pulito.strip()
 
             if not testo_pulito:
                 return None
             
-            VOICE = "it-IT-ElsaNeural"
-            communicate = edge_tts.Communicate(testo_pulito, VOICE, rate="+10%")
+            # Voce stabile Isabella. Zero parametri extra.
+            VOICE = "it-IT-IsabellaNeural"
+            communicate = edge_tts.Communicate(testo_pulito, VOICE)
             
             audio_bytes = b""
             # Raccolta stream audio
@@ -94,9 +94,9 @@ class ActionExecutor:
                 if chunk["type"] == "audio":
                     audio_bytes += chunk["data"]
             
-            # CONTROLLO INTEGRITÀ: Se non abbiamo ricevuto nulla, non inviare audio corrotto
-            if len(audio_bytes) < 100: # Soglia minima per considerare l'audio valido
-                print("[ERRORE SINTESI VOCALE]: Dati audio troppo brevi o assenti.")
+            # CONTROLLO INTEGRITÀ
+            if len(audio_bytes) < 100: 
+                print("[ERRORE SINTESI VOCALE]: Dati audio troppo brevi o assenti (possibile blocco Microsoft).")
                 return None
             
             return base64.b64encode(audio_bytes).decode('utf-8')
