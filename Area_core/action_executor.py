@@ -3,6 +3,7 @@ import json
 import os
 import base64
 import importlib
+import re # Aggiunto per pulizia testo più avanzata
 
 class ActionExecutor:
     def __init__(self):
@@ -36,35 +37,49 @@ class ActionExecutor:
             print(f"[ERRORE] Scrittura memoria fallita: {e}")
 
     async def genera_audio_base64(self, testo_da_pronunciare):
-        """Trasforma il testo in un file audio pulito con voce ChiaraNeural, senza markdown."""
+        """Trasforma il testo in un file audio pulito con voce neurale ad alta qualità."""
         if not testo_da_pronunciare:
             print("[DEBUG] Testo vuoto in ingresso. Nessun audio generato.")
             return None
 
         try:
             import edge_tts 
-            VOICE = "it-IT-ChiaraNeural"
             
+            # ElsaNeural è considerata una delle voci italiane più naturali e fluide in assoluto.
+            # In alternativa, puoi rimettere "it-IT-ChiaraNeural"
+            VOICE = "it-IT-ElsaNeural" 
+            
+            # Pulizia avanzata della formattazione
             testo_pulito = (
                 testo_da_pronunciare
                 .replace("**", "")
                 .replace("*", "")
                 .replace("#", "")
                 .replace("`", "")
-                .strip()
             )
+            
+            # Rimuove le note di pronuncia tra parentesi (es: "(pronuncia "see-ah")")
+            # che l'intelligenza artificiale tenderebbe a leggere letteralmente, sembrando robotica.
+            testo_pulito = re.sub(r'\(pronuncia.*?\)', '', testo_pulito, flags=re.IGNORECASE)
+            
+            testo_pulito = testo_pulito.strip()
             
             if not testo_pulito:
                 return None
                 
-            communicate = edge_tts.Communicate(testo_pulito, VOICE)
+            # Il parametro rate="+15%" velocizza la parlata rendendola molto più umana e meno cantilenante.
+            communicate = edge_tts.Communicate(testo_pulito, VOICE, rate="+15%")
             audio_bytes = b""
             async for chunk in communicate.stream():
                 if chunk["type"] == "audio":
                     audio_bytes += chunk["data"]
+            
+            print("[DEBUG] Audio neurale generato con successo tramite edge-tts.")
             return base64.b64encode(audio_bytes).decode('utf-8')
+            
         except ImportError:
-            print("[ATTENZIONE] Modulo 'edge_tts' mancante. Audio non generato.")
+            print("[ERRORE CRITICO] Modulo 'edge_tts' mancante. Python non può generare l'audio e l'app usa la voce robotica di riserva!")
+            print("-> RISOLVI DIGITANDO NEL TERMINALE: pip install edge-tts")
             return None
         except Exception as e:
             print(f"[ERRORE SINTESI VOCALE]: {e}")
