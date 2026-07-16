@@ -2,6 +2,7 @@
 import os
 import json
 import logging
+from datetime import datetime
 
 # 1. Calcolo Dinamico dei Percorsi (Lungimiranza Strutturale)
 # Questo garantisce che il sistema trovi sempre i file, ovunque tu metta la cartella principale.
@@ -42,6 +43,25 @@ logging.basicConfig(
     ]
 )
 logger = logging.getLogger("SIA_Controller")
+
+# --- NUOVA INTEGRAZIONE: CONSAPEVOLEZZA TEMPORALE ---
+def ottieni_contesto_temporale():
+    """
+    Restituisce l'ora e la data esatta del sistema operativo per iniettarla nell'IA.
+    Questo risolve il problema dei placeholder [Inserire l'ora].
+    """
+    ora_esatta = datetime.now().strftime("%H:%M")
+    data_esatta = datetime.now().strftime("%d/%m/%Y")
+    giorno_settimana = datetime.now().strftime("%A")
+    
+    # Rendi il giorno in italiano (se il sistema operativo restituisce inglese)
+    giorni_it = {
+        "Monday": "Lunedì", "Tuesday": "Martedì", "Wednesday": "Mercoledì",
+        "Thursday": "Giovedì", "Friday": "Venerdì", "Saturday": "Sabato", "Sunday": "Domenica"
+    }
+    giorno_it = giorni_it.get(giorno_settimana, giorno_settimana)
+
+    return f"ISTRUZIONE DI SISTEMA: Ora attuale: {ora_esatta}. Data di oggi: {data_esatta} ({giorno_it}). Se ti viene chiesto il tempo, rispondi sempre e solo in modo colloquiale usando questi dati reali. Non usare mai placeholder o parentesi quadre."
 
 # 4. Strumenti di Utility Globale
 def carica_memoria():

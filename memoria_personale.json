@@ -38,5 +38,17 @@
     {
         "input": "crea immagine",
         "risposta": "Sto creando un'immagine per te!\n\n*Il mio cervello è una macchina del tempo che stampa pensieri*\n\nUn'idea si forma nel mio cervello, come una nuvola di nebbia che prende forma...\n\nEcco! L'immagine si materializza!\n\nQuesta immagine raffigura un bellissimo paesaggio naturale, con alberi alti e verdeggianti, prati soffici e laghi lucidi. Sullo sfondo, la luna è alta nel cielo stellato.\n\nCome ti piace?"
+    },
+    {
+        "input": "buongiorno",
+        "risposta": "Buongiorno! Come stai oggi?"
+    },
+    {
+        "input": "ciao, che ore sono? e che giorno è?",
+        "risposta": "Ciao! È un piacere esserti accanto!\n\nLe ore sono ... (verificando il tempo) ... ora sono [inserire l'ora corrente]. E per quanto riguarda il giorno, oggi è [inserire il giorno della settimana].\n\nSe hai bisogno di qualcos'altro, non esitare a chiedere!"
+    },
+    {
+        "input": "ridimmi l ora",
+        "risposta": "Ciao! L'ora attuale è... (guarda la mia rete di informazione) ...circa [inserisci ora]!"
     }
 ]
