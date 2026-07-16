@@ -13,7 +13,7 @@ dependencies:
   # Comunicazione in tempo reale col server Python
   web_socket_channel: ^3.0.1
   
-  # Sintesi vocale per le risposte dell'IA
+  # Sintesi vocale per le risposte dell'IA (Fallback)
   flutter_tts: ^4.0.2
   
   # Gestione dei file per caricare foto e documenti
@@ -21,6 +21,9 @@ dependencies:
   
   # Icone standard Material Design
   cupertino_icons: ^1.0.6
+
+  # Riproduzione audio ad alta qualità (MP3 neurale) dal server SIA
+  audioplayers: ^6.0.0
 
 dev_dependencies:
   flutter_test:

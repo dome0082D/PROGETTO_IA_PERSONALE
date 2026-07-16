@@ -4,19 +4,43 @@ import os
 import base64
 import importlib
 import re
+from datetime import datetime
+import torch
+from diffusers import StableDiffusionPipeline
 
 class ActionExecutor:
     def __init__(self):
         self.memory_file = "memoria_personale.json"
+        
+        # Creazione file di memoria se non esiste
         if not os.path.exists(self.memory_file):
             try:
                 with open(self.memory_file, "w", encoding="utf-8") as f:
                     json.dump([], f)
             except Exception as e:
                 print(f"[ERRORE] Creazione file memoria fallita: {e}")
+                
+        # Inizializzazione del motore di generazione immagini (Stable Diffusion 1.5)
+        try:
+            print("[SISTEMA] Inizializzazione motore immagini in corso...")
+            self.pipe = StableDiffusionPipeline.from_pretrained(
+                "runwayml/stable-diffusion-v1-5", 
+                torch_dtype=torch.float32
+            )
+            # Impostato su CPU per garantire stabilità e compatibilità con l'architettura Intel i3
+            self.pipe = self.pipe.to("cpu") 
+            print("[SISTEMA] Motore immagini caricato con successo.")
+        except Exception as e:
+            print(f"[AVVISO] Motore immagini non inizializzato. Generazione disabilitata: {e}")
+            self.pipe = None
+
+    def get_time_data(self):
+        """Recupera data e ora esatta dal sistema operativo del PC."""
+        now = datetime.now()
+        return {"data": now.strftime("%d/%m/%Y"), "ora": now.strftime("%H:%M:%S")}
 
     def salva_in_memoria(self, input_user, risposta_ai):
-        """Salvataggio robusto: se il file è corrotto, lo resetta senza far crashare il server."""
+        """Salvataggio robusto: ora include il timestamp reale e restituisce l'intera cronologia."""
         memoria = []
         if os.path.exists(self.memory_file):
             try:
@@ -28,13 +52,21 @@ class ActionExecutor:
                 print(f"[AVVISO] Il file {self.memory_file} era corrotto. Ripartiamo da una memoria pulita.")
                 memoria = []
 
-        memoria.append({"input": input_user, "risposta": risposta_ai})
+        # Aggiungiamo la nuova interazione con il timestamp sincronizzato
+        memoria.append({
+            "input": input_user, 
+            "risposta": risposta_ai,
+            "timestamp": self.get_time_data()
+        })
 
         try:
             with open(self.memory_file, "w", encoding="utf-8") as f:
                 json.dump(memoria, f, indent=4, ensure_ascii=False)
         except Exception as e:
             print(f"[ERRORE] Scrittura memoria fallita: {e}")
+            
+        # Restituiamo la memoria completa per inviarla al frontend Flutter
+        return memoria
 
     def carica_memoria(self):
         """Legge l'intero storico dal file JSON. Usata all'avvio per ricaricare tutta la conversazione visiva."""
@@ -68,31 +100,40 @@ class ActionExecutor:
         return history
 
     async def genera_audio_base64(self, testo_da_pronunciare):
-        """Trasforma il testo in audio neurale. Nessun parametro 'rate' per evitare l'errore del server Microsoft."""
+        """
+        Trasforma il testo in audio neurale.
+        Salva prima il file fisicamente per garantire un MP3 perfetto ed evitare voci robotiche o corrotte.
+        """
         if not testo_da_pronunciare:
             return None
 
         try:
             import edge_tts
             
-            # Pulizia profonda del testo per evitare errori del motore TTS (suoni metallici)
+            # Pulizia per evitare crash del TTS, mantenendo la punteggiatura per l'intonazione
             testo_pulito = re.sub(r'[\*\#\`]', '', testo_da_pronunciare)
             testo_pulito = re.sub(r'\(.*?\)', '', testo_pulito)
-            testo_pulito = re.sub(r'[^\w\s\.\,\!\?]', '', testo_pulito)
             testo_pulito = testo_pulito.strip()
 
             if not testo_pulito:
                 return None
             
-            # Voce stabile Isabella. Zero parametri extra.
-            VOICE = "it-IT-IsabellaNeural"
+            # Utilizziamo ElsaNeural che è la più espressiva e naturale in italiano
+            VOICE = "it-IT-ElsaNeural"
             communicate = edge_tts.Communicate(testo_pulito, VOICE)
             
-            audio_bytes = b""
-            # Raccolta stream audio
-            async for chunk in communicate.stream():
-                if chunk["type"] == "audio":
-                    audio_bytes += chunk["data"]
+            # IL FIX DEFINITIVO PER LA VOCE ROBOTICA:
+            # Salviamo su file fisico temporaneo per far chiudere correttamente l'header MP3 a edge-tts
+            temp_file = "temp_audio_sia.mp3"
+            await communicate.save(temp_file)
+            
+            # Rileggiamo il file (ora è un MP3 puro e perfetto)
+            with open(temp_file, "rb") as f:
+                audio_bytes = f.read()
+                
+            # Cancelliamo il file temporaneo per fare pulizia
+            if os.path.exists(temp_file):
+                os.remove(temp_file)
             
             # CONTROLLO INTEGRITÀ
             if len(audio_bytes) < 100: 
@@ -107,6 +148,30 @@ class ActionExecutor:
         except Exception as e:
             print(f"[ERRORE SINTESI VOCALE]: {e}")
             return None
+
+    async def genera_immagine(self, prompt):
+        """
+        Genera un'immagine in locale usando Stable Diffusion.
+        Crea fisicamente il file .png pronto per la visualizzazione.
+        """
+        if not self.pipe:
+            return "ERRORE: Motore di generazione immagini non installato o non inizializzato."
+        
+        try:
+            print(f"[SIA_CORE] Generazione immagine in corso per il prompt: '{prompt}'...")
+            
+            # Generazione dell'immagine
+            image = self.pipe(prompt).images[0]
+            
+            # Salvataggio fisico del file
+            percorso_file = "immagine_generata_sia.png"
+            image.save(percorso_file)
+            print(f"[SIA_CORE] Immagine salvata con successo in: {percorso_file}")
+            
+            return percorso_file
+        except Exception as e:
+            print(f"[ERRORE CRITICO] Generazione immagine fallita: {e}")
+            return f"ERRORE durante la creazione dell'immagine: {e}"
 
     def integra_nuovo_agente(self, nome_agente, nuovo_codice):
         """Aggiunge o estende un agente senza mai sovrascrivere o cancellare i file core (Append-Only)."""

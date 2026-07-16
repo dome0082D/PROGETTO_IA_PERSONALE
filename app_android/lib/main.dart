@@ -1,7 +1,10 @@
+// lib/main.dart
 import 'package:flutter/material.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 import 'package:flutter_tts/flutter_tts.dart';
+import 'package:audioplayers/audioplayers.dart';
 import 'dart:convert';
+import 'dart:typed_data';
 
 void main() => runApp(const MyApp());
 
@@ -26,18 +29,22 @@ class MonitorPage extends StatefulWidget {
 class _MonitorPageState extends State<MonitorPage> {
   late WebSocketChannel channel;
   final FlutterTts flutterTts = FlutterTts();
+  final AudioPlayer audioPlayer = AudioPlayer(); 
   final TextEditingController _inputController = TextEditingController();
+  final ScrollController _scrollController = ScrollController(); // Per scorrere in basso automaticamente
   
   // VARIABILI DI STATO PERSISTENTI
   String sicurezza = "OPERATIVO";
   double cpuValue = 0.0;
-  String ultimaLettura = ""; 
-  Map<String, dynamic> ultimiDatiVisuali = {
-    "tipo": "TESTO", 
-    "contenuto": "SIA Connessa. In attesa di comandi..."
-  };
-  
   bool haErroreConnessione = false;
+  
+  // NUOVE VARIABILI DI STATO
+  bool isMuted = false; 
+  String dataOra = "--/--/---- --:--";
+  String ultimaLettura = ""; 
+  
+  // LA NUOVA MEMORIA A SCHERMO: Una lista che conserva tutto
+  List<Map<String, dynamic>> cronologia = [];
 
   @override
   void initState() {
@@ -57,18 +64,14 @@ class _MonitorPageState extends State<MonitorPage> {
           elaboraMessaggioInArrivo(message);
         },
         onError: (error) {
-          setState(() {
-            haErroreConnessione = true;
-          });
+          setState(() { haErroreConnessione = true; });
         },
         onDone: () {
           debugPrint("Connessione WebSocket chiusa.");
         },
       );
     } catch (e) {
-      setState(() {
-        haErroreConnessione = true;
-      });
+      setState(() { haErroreConnessione = true; });
     }
   }
 
@@ -87,19 +90,30 @@ class _MonitorPageState extends State<MonitorPage> {
           sicurezza = dati['sicurezza']?.toString() ?? 'OPERATIVO';
         }
         
-        // 2. Se è un pacchetto di monitoraggio aggiorna solo i dati hardware senza cancellare lo schermo
+        // 2. Aggiornamento dati di monitoraggio e orologio
         if (dati.containsKey('monitoraggio')) {
           final mon = dati['monitoraggio'];
-          if (mon is Map && mon.containsKey('cpu')) {
-            cpuValue = (mon['cpu'] ?? 0.0).toDouble();
+          if (mon is Map) {
+            if (mon.containsKey('cpu')) cpuValue = (mon['cpu'] ?? 0.0).toDouble();
+            if (mon.containsKey('timestamp')) {
+              dataOra = "${mon['timestamp']['data']} ${mon['timestamp']['ora']}";
+            }
           }
         }
         
-        // 3. Se contiene un contenuto visivo reale (diverso da MONITOR), aggiorna la visualizzazione centrale
-        String? tipo = dati['tipo'];
-        if (tipo != null && tipo != 'MONITOR') {
-          ultimiDatiVisuali = dati;
-          gestisciTts(dati); // Riproduzione vocale sicura all'arrivo del messaggio
+        // 3. Gestione Cronologia: se il server manda l'intera memoria, aggiorniamo la lista
+        if (dati.containsKey('cronologia')) {
+          cronologia = List<Map<String, dynamic>>.from(dati['cronologia']);
+          _scrollToBottom();
+        } 
+        // 4. Gestione Singolo Messaggio Visivo (fallback se il server non manda tutta la cronologia)
+        else {
+          String? tipo = dati['tipo'];
+          if (tipo != null && tipo != 'MONITOR') {
+            cronologia.add(dati);
+            _scrollToBottom();
+            gestisciOutputAudio(dati); 
+          }
         }
       });
     } catch (e) {
@@ -107,82 +121,99 @@ class _MonitorPageState extends State<MonitorPage> {
     }
   }
 
-  void gestisciTts(Map<String, dynamic> dati) {
-    if (dati['tipo'] == 'TESTO' && dati.containsKey('contenuto')) {
+  Future<void> gestisciOutputAudio(Map<String, dynamic> dati) async {
+    if (isMuted) return; // Se il Mute è attivo, ignora l'audio
+
+    // 1. Audio ad alta qualità (MP3) dal server
+    if (dati.containsKey('audio_base64') && dati['audio_base64'] != null) {
+      try {
+        Uint8List bytes = base64Decode(dati['audio_base64']);
+        await audioPlayer.play(BytesSource(bytes));
+      } catch (e) {
+        debugPrint("Errore riproduzione audio MP3: $e");
+      }
+    } 
+    // 2. Fallback di sicurezza al vecchio TTS testuale se manca l'audio neurale
+    else if (dati['tipo'] == 'TESTO' && dati.containsKey('contenuto')) {
       String contenuto = dati['contenuto'].toString();
       if (contenuto != ultimaLettura) {
         ultimaLettura = contenuto;
-        flutterTts.speak(contenuto);
+        await flutterTts.speak(contenuto);
       }
     }
   }
 
+  void _scrollToBottom() {
+    Future.delayed(const Duration(milliseconds: 100), () {
+      if (_scrollController.hasClients) {
+        _scrollController.animateTo(
+          _scrollController.position.maxScrollExtent,
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeOut,
+        );
+      }
+    });
+  }
+
+  // Costruisce i widget visivi proteggendo e mantenendo tutta la tua logica precedente
   Widget _buildVisualContent(Map<String, dynamic> dati) {
     String tipo = dati['tipo'] ?? 'TESTO';
+    String mittente = dati['autore'] ?? (dati['input'] != null ? 'Utente' : 'SIA');
+    
+    // Header che indica chi ha scritto (Utente o SIA)
+    Widget header = Padding(
+      padding: const EdgeInsets.only(bottom: 8.0),
+      child: Text(
+        mittente.toUpperCase(),
+        style: TextStyle(
+          fontWeight: FontWeight.bold,
+          color: mittente == 'Utente' ? Colors.blueAccent : Colors.greenAccent,
+        ),
+      ),
+    );
+
+    Widget contenutoWidget;
 
     switch (tipo) {
       case 'TABELLA':
         var contenuto = dati['contenuto'];
-        // PROTEZIONE CRASH: se non è una lista, mostra il testo di fallback dell'agente senza crashare
         if (contenuto is! List) {
-          return SizedBox.expand(
-            child: SingleChildScrollView(
-              physics: const BouncingScrollPhysics(),
-              padding: const EdgeInsets.all(16.0),
-              child: SelectableText(contenuto?.toString() ?? "Nessun dato tabella disponibile."),
+          contenutoWidget = SelectableText(contenuto?.toString() ?? "Nessun dato tabella disponibile.");
+        } else {
+          contenutoWidget = SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            physics: const BouncingScrollPhysics(),
+            child: DataTable(
+              columns: const [DataColumn(label: Text('Info')), DataColumn(label: Text('Valore'))],
+              rows: contenuto.map<DataRow>((r) {
+                String chiave = "";
+                String valore = "";
+                if (r is Map) {
+                  chiave = r['chiave']?.toString() ?? '';
+                  valore = r['valore']?.toString() ?? '';
+                } else {
+                  chiave = "Dato";
+                  valore = r.toString();
+                }
+                return DataRow(cells: [
+                  DataCell(SelectableText(chiave)),
+                  DataCell(SelectableText(valore))
+                ]);
+              }).toList(),
             ),
           );
         }
-
-        return SizedBox.expand(
-          child: SingleChildScrollView(
-            scrollDirection: Axis.vertical,
-            physics: const BouncingScrollPhysics(),
-            child: SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              physics: const BouncingScrollPhysics(),
-              child: DataTable(
-                columns: const [DataColumn(label: Text('Info')), DataColumn(label: Text('Valore'))],
-                // Aggiunto cast esplicito <DataRow> per evitare errori di compilazione/runtime
-                rows: contenuto.map<DataRow>((r) {
-                  String chiave = "";
-                  String valore = "";
-                  if (r is Map) {
-                    chiave = r['chiave']?.toString() ?? '';
-                    valore = r['valore']?.toString() ?? '';
-                  } else {
-                    chiave = "Dato";
-                    valore = r.toString();
-                  }
-                  return DataRow(cells: [
-                    DataCell(SelectableText(chiave)),
-                    DataCell(SelectableText(valore))
-                  ]);
-                }).toList(),
-              ),
-            ),
-          ),
-        );
+        break;
         
       case 'LISTA':
         var contenuto = dati['contenuto'];
         if (contenuto is! List) {
-          return SizedBox.expand(
-            child: SingleChildScrollView(
-              physics: const BouncingScrollPhysics(),
-              padding: const EdgeInsets.all(16.0),
-              child: SelectableText(contenuto?.toString() ?? "Nessun elemento in lista."),
-            ),
-          );
-        }
-
-        return SizedBox.expand(
-          child: ListView.builder(
-            physics: const BouncingScrollPhysics(),
-            // CORRETTO: rimosso l'ultimo "contenido" rimasto e sostituito con "contenuto"
-            itemCount: contenuto.length,
-            itemBuilder: (context, index) {
-              final item = contenuto[index];
+          contenutoWidget = SelectableText(contenuto?.toString() ?? "Nessun elemento in lista.");
+        } else {
+          contenutoWidget = Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            // Sostituisco la ListView interna con una Column per non rompere la ListView principale esterna
+            children: contenuto.map<Widget>((item) {
               String titolo = "";
               if (item is Map) {
                 titolo = item['titolo']?.toString() ?? item['contenuto']?.toString() ?? '';
@@ -192,55 +223,61 @@ class _MonitorPageState extends State<MonitorPage> {
               return ListTile(
                 title: SelectableText(titolo),
                 leading: const Icon(Icons.newspaper),
+                dense: true, // Rende la lista più compatta
               );
-            },
-          ),
-        );
+            }).toList(),
+          );
+        }
+        break;
 
       case 'POPUP':
         String titoloPopup = dati['titolo']?.toString() ?? "Notifica di Sistema";
         String messaggioPopup = dati['messaggio']?.toString() ?? dati['contenuto']?.toString() ?? "";
-        return SizedBox.expand(
-          child: SingleChildScrollView(
-            physics: const BouncingScrollPhysics(),
-            padding: const EdgeInsets.all(20.0),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+        contenutoWidget = Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
               children: [
-                Row(
-                  children: [
-                    const Icon(Icons.warning_amber_rounded, color: Colors.orangeAccent),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        titoloPopup, 
-                        style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.orangeAccent),
-                        softWrap: true,
-                      ),
-                    ),
-                  ],
+                const Icon(Icons.warning_amber_rounded, color: Colors.orangeAccent),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    titoloPopup, 
+                    style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.orangeAccent),
+                    softWrap: true,
+                  ),
                 ),
-                const Divider(color: Colors.orangeAccent),
-                const SizedBox(height: 10),
-                SelectableText(messaggioPopup, style: const TextStyle(fontSize: 16)),
               ],
             ),
-          ),
+            const Divider(color: Colors.orangeAccent),
+            const SizedBox(height: 10),
+            SelectableText(messaggioPopup, style: const TextStyle(fontSize: 16)),
+          ],
         );
+        break;
         
-      default:
-        return SizedBox.expand(
-          child: SingleChildScrollView(
-            scrollDirection: Axis.vertical,
-            physics: const BouncingScrollPhysics(),
-            padding: const EdgeInsets.all(16.0),
-            child: SelectableText(
-              dati['contenuto']?.toString() ?? "",
-              style: const TextStyle(fontSize: 16),
-            ),
-          ),
+      default: // TESTO
+        String testoVisivo = dati['input'] ?? dati['risposta'] ?? dati['contenuto']?.toString() ?? "";
+        contenutoWidget = SelectableText(
+          testoVisivo,
+          style: const TextStyle(fontSize: 16),
         );
     }
+
+    // Incapsula ogni messaggio nel suo "fumetto" per renderlo ben visibile
+    return Container(
+      margin: const EdgeInsets.symmetric(vertical: 8.0, horizontal: 4.0),
+      padding: const EdgeInsets.all(12.0),
+      decoration: BoxDecoration(
+        color: Colors.black26,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.white12),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [header, contenutoWidget],
+      ),
+    );
   }
 
   @override
@@ -248,7 +285,9 @@ class _MonitorPageState extends State<MonitorPage> {
     // Chiusura pulita delle risorse all'uscita per evitare memory leak
     channel.sink.close();
     _inputController.dispose();
+    _scrollController.dispose();
     flutterTts.stop();
+    audioPlayer.dispose();
     super.dispose();
   }
 
@@ -277,7 +316,27 @@ class _MonitorPageState extends State<MonitorPage> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
-              const SizedBox(height: 10),
+              // 1. NUOVO HEADER CON TASTO MUTE E OROLOGIO
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(dataOra, style: const TextStyle(color: Colors.grey, fontSize: 14)),
+                  IconButton(
+                    icon: Icon(isMuted ? Icons.volume_off : Icons.volume_up, 
+                               color: isMuted ? Colors.redAccent : Colors.greenAccent, size: 30),
+                    onPressed: () async {
+                      setState(() { isMuted = !isMuted; });
+                      if (isMuted) {
+                        await audioPlayer.stop();
+                        await flutterTts.stop();
+                      }
+                    },
+                    tooltip: "Pausa/Mute Audio",
+                  ),
+                ],
+              ),
+              const SizedBox(height: 5),
+              // 2. DATI DI MONITORAGGIO GLOBALI
               Text(
                 "SICUREZZA: $sicurezza", 
                 style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
@@ -289,7 +348,8 @@ class _MonitorPageState extends State<MonitorPage> {
                 textAlign: TextAlign.center,
               ),
               const SizedBox(height: 15),
-              // Area centrale dinamica protetta e flessibile senza limiti di spazio rigidi
+              
+              // 3. AREA CENTRALE CON LA CRONOLOGIA COMPLETA
               Expanded(
                 child: Container(
                   width: double.infinity,
@@ -297,11 +357,22 @@ class _MonitorPageState extends State<MonitorPage> {
                     color: Colors.black12,
                     borderRadius: BorderRadius.circular(12),
                   ),
-                  child: _buildVisualContent(ultimiDatiVisuali),
+                  child: cronologia.isEmpty 
+                    ? const Center(child: Text("SIA Connessa. In attesa di comandi...", style: TextStyle(color: Colors.grey)))
+                    : ListView.builder(
+                        controller: _scrollController,
+                        physics: const BouncingScrollPhysics(),
+                        padding: const EdgeInsets.all(8.0),
+                        itemCount: cronologia.length,
+                        itemBuilder: (context, index) {
+                          return _buildVisualContent(cronologia[index]);
+                        },
+                      ),
                 ),
               ),
               const SizedBox(height: 15),
-              // Campo di input per l'invio dei comandi testuali
+              
+              // 4. CAMPO DI INPUT TESTUALE
               TextField(
                 controller: _inputController,
                 decoration: InputDecoration(
@@ -311,6 +382,15 @@ class _MonitorPageState extends State<MonitorPage> {
                     icon: const Icon(Icons.send),
                     onPressed: () {
                       if (_inputController.text.trim().isNotEmpty) {
+                        // Visualizza immediatamente il testo a schermo prima di inviarlo
+                        setState(() {
+                          cronologia.add({
+                            'tipo': 'TESTO',
+                            'autore': 'Utente',
+                            'contenuto': _inputController.text.trim()
+                          });
+                          _scrollToBottom();
+                        });
                         channel.sink.add(jsonEncode({'comando_testuale': _inputController.text.trim()}));
                         _inputController.clear();
                       }
@@ -319,6 +399,15 @@ class _MonitorPageState extends State<MonitorPage> {
                 ),
                 onSubmitted: (value) {
                   if (value.trim().isNotEmpty) {
+                    // Visualizza immediatamente il testo a schermo prima di inviarlo
+                    setState(() {
+                      cronologia.add({
+                        'tipo': 'TESTO',
+                        'autore': 'Utente',
+                        'contenuto': value.trim()
+                      });
+                      _scrollToBottom();
+                    });
                     channel.sink.add(jsonEncode({'comando_testuale': value.trim()}));
                     _inputController.clear();
                   }
